@@ -1,5 +1,5 @@
 /* Resumo Candidato — SC: núcleo de geometria/projeção.
- * Porta 1:1 do gerador Python (gen_mapa_1333.py), incluindo o Mersenne
+ * Porta 1:1 do gerador Python original (fora do repo), incluindo o Mersenne
  * Twister do Python (random.Random) para posições idênticas dos pontos. */
 (function (root) {
   'use strict';

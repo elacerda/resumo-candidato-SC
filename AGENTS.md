@@ -29,8 +29,6 @@ data/tse_2026/                Snapshot TSE (gerado por sync/tse_sync.py)
 sync/tse_sync.py              Gera o snapshot (stdlib only, determinístico)
 .github/workflows/tse-sync.yml  CI: re-gera snapshot (diário + manual + push no script)
 test/                         Testes Node (DOM shim; ver abaixo)
-test/gen_mapa_1333_ref.py     Gerador Python de referência (fixture do e2e.js; não é do app)
-test/fixture_1333/            Fixture HTML de referência (3397 pontos) para o e2e.js
 ```
 
 ### Formato do snapshot (`data/tse_2026/`)
@@ -56,7 +54,8 @@ votos, local, end}], candidato?, numero?, cargo?, eleicao?, fonte?}`.
    município vem de rejeição determinística seedeada pelo ID IBGE do município.
    - 2º loop de `init_by_array`: multiplicador **1566083941**.
    - `random()` (res53): `(a * 67108864 + b) * (1/9007199254740992)`.
-   - Mudança aqui muda TODOS os pontos do mapa → roda `node test/e2e.js`.
+   - Mudança aqui muda TODOS os pontos do mapa → rode `node test/app_smoke.js` e
+     confira visualmente o exemplo (1333) no navegador.
 2. **Ordem das seções define o mapa**: a ordem dentro de cada município = ordem do arquivo
    CSV do TSE. O exemplo `data/1333_sc_2026.json` e o snapshot seguem essa ordem; se o TSE
    republishar o arquivo em outra ordem, regere o exemplo (mesma lógica de `sync/tse_sync.py`)
@@ -80,15 +79,11 @@ votos, local, end}], candidato?, numero?, cargo?, eleicao?, fonte?}`.
 ```
 node test/app_smoke.js     # app com DOM shim: exemplo 1333 (3397 dots), validação de erro
 node test/snapshot_app.js  # modo snapshot: mapa/lista por número + fallback CDN com "Failed to fetch"
-node test/e2e.js           # pipeline JS vs mapa Python publicado (3397 pontos idênticos)
 node test/tse_e2e.js       # zip oficial TSE -> parser JS vs dataset publicado (requer /tmp/tse_sc.zip)
 ```
 
-Após mexer em `js/`, `data/` ou `sync/`: rode **todos** os quatro (os dois últimos precisam
-de zips TSE em `/tmp`: `votacao_secao_2026_SC.zip` / `tse_sc.zip`). O `e2e.js` compara o
-pipeline JS com a fixture `test/fixture_1333/1333_sc_mapa.html`, gerada pelo gerador Python
-de referência `test/gen_mapa_1333_ref.py` (se o gerador ou os dados mudarem, regenerar a
-fixture com `python3 test/gen_mapa_1333_ref.py data/geo_sc_municipios.json test/fixture_1333`).
+Após mexer em `js/`, `data/` ou `sync/`: rode **todos** (o `tse_e2e.js` precisa do zip TSE
+em `/tmp`: `tse_sc.zip`).
 
 ## Regenerando o snapshot
 

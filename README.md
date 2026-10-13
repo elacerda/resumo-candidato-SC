@@ -44,7 +44,7 @@ Interação do mapa: scroll = zoom (centrado no cursor) · arrastar = mover · d
 
 ## Como funciona
 
-- `js/core.js` — porta 1:1 do gerador Python (`gen_mapa_1333.py`): projeção
+- `js/core.js` — núcleo de geometria (mesma lógica do gerador Python original): projeção
   equiretangular, encaixe de pontos dentro dos polígonos por grade determinística com
   rejeição (Mersenne Twister idêntico ao do Python — a mesma seção sempre cai no mesmo
   ponto) e choropleth por município (escala log).
@@ -79,8 +79,7 @@ permitindo consulta instantânea por número no próprio GitHub Pages.
 ## Testes
 
 ```
-node test/e2e.js       # pipeline JS vs referência Python (fixture test/fixture_1333; 3397 pontos idênticos)
-node test/app_smoke.js # smoke do app com DOM shim
-node test/tse_e2e.js     # zip oficial TSE -> parser JS vs dataset 1333 publicado (requer /tmp/tse_sc.zip)
+node test/app_smoke.js    # smoke do app com DOM shim (exemplo 1333)
 node test/snapshot_app.js # app no modo snapshot: mapa/lista por número + fallback CDN com falha de rede
+node test/tse_e2e.js      # zip oficial TSE -> parser JS vs dataset 1333 publicado (requer /tmp/tse_sc.zip)
 ```
