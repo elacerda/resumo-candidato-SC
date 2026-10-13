@@ -1,0 +1,128 @@
+:root {
+  --bg: #0e1319; --panel: #161d27; --line: #2a3543; --line2: #35507a;
+  --fg: #e8eef5; --muted: #8fa0b3; --accent: #3b82f6; --dot: #ffb454;
+  --ok: #34d399; --warn: #fbbf24; --err: #f87171;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: radial-gradient(1200px 600px at 70% -10%, #141c28 0%, var(--bg) 55%);
+  color: var(--fg);
+  font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+}
+/* ---------- topbar ---------- */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 20px; background: rgba(14,19,25,0.92); backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand .logo { width: 30px; height: 30px; }
+.brand h1 { font-size: 15.5px; font-weight: 700; margin: 0; letter-spacing: 0.2px; }
+.badge {
+  display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px;
+  background: rgba(59,130,246,0.15); color: #93c5fd; border: 1px solid var(--line2);
+  font-size: 11px; font-weight: 600; vertical-align: 1px;
+}
+.actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.btn {
+  appearance: none; border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+  padding: 7px 14px; border-radius: 8px; font: 600 13px system-ui, sans-serif; cursor: pointer;
+  transition: border-color .15s, background .15s, transform .05s;
+}
+.btn:hover { border-color: var(--line2); background: #1a2432; }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { background: #2f6fe0; }
+.link {
+  appearance: none; border: 0; background: none; color: #93c5fd; cursor: pointer;
+  font: 600 inherit; padding: 0; text-decoration: underline; text-underline-offset: 3px;
+}
+/* ---------- layout ---------- */
+.wrap { max-width: 1160px; margin: 0 auto; padding: 26px 18px 8px; }
+.foot {
+  max-width: 1160px; margin: 18px auto 30px; padding: 0 18px;
+  color: var(--muted); font-size: 11.5px; line-height: 1.6;
+}
+.hidden { display: none !important; }
+.dim { color: var(--muted); }
+/* ---------- dropzone / estado vazio ---------- */
+.dropzone {
+  border: 2px dashed var(--line2); border-radius: 16px;
+  background: rgba(22,29,39,0.55);
+  padding: 48px 28px 36px; text-align: center;
+  transition: border-color .15s, background .15s;
+}
+.dropzone.dragover { border-color: var(--accent); background: rgba(59,130,246,0.07); }
+.dz-icon { width: 84px; height: 84px; margin-bottom: 6px; }
+.dropzone h2 { margin: 6px 0 8px; font-size: 21px; font-weight: 700; }
+.dropzone p { max-width: 640px; margin: 0 auto 18px; color: var(--muted); font-size: 13.5px; }
+.dz-alt { margin-bottom: 20px; color: var(--muted); font-size: 13px; }
+.dz-alt .btn { margin-left: 8px; }
+.err {
+  max-width: 640px; margin: 0 auto 18px; padding: 10px 14px; border-radius: 8px;
+  background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.4); color: #fca5a5;
+  font-size: 13px; text-align: left;
+}
+.fmt { text-align: left; max-width: 720px; margin: 26px auto 0; }
+.fmt summary {
+  cursor: pointer; font-weight: 600; color: #93c5fd; font-size: 13px;
+  padding: 8px 0; user-select: none;
+}
+.fmt p { color: var(--muted); font-size: 12.5px; }
+.fmt pre {
+  background: #0b0f14; border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px; overflow-x: auto; font: 12px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color: #c9d6e3;
+}
+.fmt code { color: #93c5fd; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+/* ---------- resultados ---------- */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.chip {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+  padding: 5px 13px; font-size: 12.5px; font-weight: 600;
+}
+.chip .k { color: var(--muted); font-weight: 500; font-size: 11.5px; }
+.warn {
+  background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.35);
+  color: #fcd34d; border-radius: 8px; padding: 9px 13px; font-size: 12.5px; margin-bottom: 14px;
+}
+/* ---------- mapa ---------- */
+.mapwrap { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+.mapwrap svg { width: 100%; height: auto; display: block; cursor: grab; user-select: none; -webkit-user-select: none; }
+.mapwrap svg.dragging, .mapwrap svg.dragging .dot { cursor: grabbing; }
+.dot { cursor: pointer; }
+.dot:hover { stroke: #ffffff; stroke-width: 1.2; fill-opacity: 1; }
+.hud {
+  position: absolute; z-index: 5; pointer-events: none;
+  background: rgba(22,29,39,0.92); border: 1px solid var(--line); border-radius: 8px;
+}
+#hudTitle { top: 14px; left: 14px; padding: 9px 13px; max-width: min(75%, 640px); }
+#hudTitle .t { font-size: 15.5px; font-weight: 700; }
+#hudTitle .s { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+#hudLegend { right: 14px; bottom: 14px; padding: 8px 11px; }
+#hudLegend .l1 { font-size: 10px; }
+#hudLegend .l2 {
+  display: flex; align-items: center; gap: 5px; font-size: 9px; color: var(--muted); margin-top: 4px;
+}
+#hudLegend .d { width: 6px; height: 6px; border-radius: 50%; background: var(--dot); display: inline-block; flex: none; }
+/* ---------- tooltip ---------- */
+#tip {
+  position: fixed; display: none; z-index: 10; max-width: 300px; pointer-events: none;
+  background: rgba(23,30,40,0.97); border: 1px solid #3a4a5f; border-radius: 6px;
+  padding: 8px 10px; font: 12px/1.45 system-ui, -apple-system, sans-serif;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+}
+#tip .h { font-weight: 700; font-size: 12.5px; }
+#tip .muni { color: var(--muted); font-size: 11.5px; }
+#tip .m { color: var(--muted); font-size: 11px; margin-top: 2px; overflow-wrap: anywhere; }
+#tip .v { margin-top: 6px; color: var(--dot); font-weight: 700; }
+/* ---------- responsivo ---------- */
+@media (max-width: 640px) {
+  .topbar { flex-direction: column; align-items: stretch; }
+  .actions { justify-content: center; }
+  #hudTitle { max-width: 85%; }
+}
