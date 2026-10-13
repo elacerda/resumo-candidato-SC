@@ -15,6 +15,9 @@ mapa é desenhado **100% no navegador** — nenhum dado sai da máquina.
   progresso, e fica em cache (IndexedDB) no dispositivo. Nada é enviado a nenhum servidor.
 - **Carregar JSON** (ou arrastar o arquivo para a página): tabela no formato abaixo.
 - **Exemplo (1333)**: carrega o dataset de exemplo (Ju Andózio, 1333, SC, 2026).
+- **Página original (1333)**: `1333_sc_mapa.html` — versão autossuficiente do mapa
+  (dados embutidos), servida em `/1333_sc_mapa.html`; `1333_sc_mapa.svg` é a exportação
+  estática e `gen_mapa_1333.py` o gerador (mesma lógica de `js/core.js`).
 - **Baixar SVG / JSON**: exporta o mapa estático (com tooltips nativos) ou o dataset.
 
 Interação do mapa: scroll = zoom (centrado no cursor) · arrastar = mover · duplo clique = resetar.

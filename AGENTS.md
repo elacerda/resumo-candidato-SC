@@ -83,8 +83,8 @@ node test/tse_e2e.js       # zip oficial TSE -> parser JS vs dataset publicado (
 ```
 
 Após mexer em `js/`, `data/` ou `sync/`: rode **todos** os quatro (os dois últimos precisam
-de zips TSE em `/tmp`: `votacao_secao_2026_SC.zip` / `tse_sc.zip`). O `e2e.js` lê do diretório
-`/home/delta/eduardolacerda/compare/artifacts` (mapa HTML de referência + exemplo).
+de zips TSE em `/tmp`: `votacao_secao_2026_SC.zip` / `tse_sc.zip`). O `e2e.js` lê do próprio
+repo (`data/` + `1333_sc_mapa.html` de referência).
 
 ## Regenerando o snapshot
 

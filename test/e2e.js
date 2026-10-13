@@ -2,11 +2,11 @@
 const fs = require('fs');
 const path = require('path');
 const C = require('../js/core.js');
-const ART = '/home/delta/eduardolacerda/compare/artifacts';
+const ROOT = path.join(__dirname, '..');
 
-const geo = JSON.parse(fs.readFileSync(path.join(ART, 'geo_sc_municipios.json'), 'utf8'));
-const data = JSON.parse(fs.readFileSync(path.join(ART, '1333_sc_2026.json'), 'utf8'));
-const html = fs.readFileSync(path.join(ART, '1333_sc_mapa.html'), 'utf8');
+const geo = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'geo_sc_municipios.json'), 'utf8'));
+const data = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', '1333_sc_2026.json'), 'utf8'));
+const html = fs.readFileSync(path.join(ROOT, '1333_sc_mapa.html'), 'utf8');
 
 // 1) índice de geometria + mapeamento TSE -> IBGE
 const { feats, geoByName } = C.buildGeoIndex(geo);
