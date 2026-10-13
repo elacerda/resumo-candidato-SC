@@ -23,7 +23,7 @@ const zip = fs.readFileSync('/tmp/tse_sc.zip');
   console.log('candidateDataset(1333):', Date.now() - t2, 'ms | total =', ds.total, '| secoes =', ds.sections.length, '| mun =', Object.keys(ds.mun).length);
 
   // comparação com o arquivo publicado
-  const pub = JSON.parse(fs.readFileSync('/home/delta/eduardolacerda/compare/artifacts/1333_sc_2026.json', 'utf8'));
+  const pub = JSON.parse(fs.readFileSync(require('path').join(__dirname, '..', 'data', '1333_sc_2026.json'), 'utf8'));
   let ok = true;
   const eq = (a, b) => a === b;
   if (ds.total !== pub.total) { ok = false; console.log('DIFF total', ds.total, pub.total); }

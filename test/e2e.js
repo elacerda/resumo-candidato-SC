@@ -6,7 +6,10 @@ const ROOT = path.join(__dirname, '..');
 
 const geo = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'geo_sc_municipios.json'), 'utf8'));
 const data = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', '1333_sc_2026.json'), 'utf8'));
-const html = fs.readFileSync(path.join(ROOT, '1333_sc_mapa.html'), 'utf8');
+// referência: fixture gerada por test/gen_mapa_1333_ref.py (regenerar com
+// `python3 test/gen_mapa_1333_ref.py data/geo_sc_municipios.json test/fixture_1333`
+// se o gerador ou os dados mudarem)
+const html = fs.readFileSync(path.join(ROOT, 'test', 'fixture_1333', '1333_sc_mapa.html'), 'utf8');
 
 // 1) índice de geometria + mapeamento TSE -> IBGE
 const { feats, geoByName } = C.buildGeoIndex(geo);

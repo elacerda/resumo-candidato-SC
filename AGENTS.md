@@ -29,6 +29,8 @@ data/tse_2026/                Snapshot TSE (gerado por sync/tse_sync.py)
 sync/tse_sync.py              Gera o snapshot (stdlib only, determinístico)
 .github/workflows/tse-sync.yml  CI: re-gera snapshot (diário + manual + push no script)
 test/                         Testes Node (DOM shim; ver abaixo)
+test/gen_mapa_1333_ref.py     Gerador Python de referência (fixture do e2e.js; não é do app)
+test/fixture_1333/            Fixture HTML de referência (3397 pontos) para o e2e.js
 ```
 
 ### Formato do snapshot (`data/tse_2026/`)
@@ -83,8 +85,10 @@ node test/tse_e2e.js       # zip oficial TSE -> parser JS vs dataset publicado (
 ```
 
 Após mexer em `js/`, `data/` ou `sync/`: rode **todos** os quatro (os dois últimos precisam
-de zips TSE em `/tmp`: `votacao_secao_2026_SC.zip` / `tse_sc.zip`). O `e2e.js` lê do próprio
-repo (`data/` + `1333_sc_mapa.html` de referência).
+de zips TSE em `/tmp`: `votacao_secao_2026_SC.zip` / `tse_sc.zip`). O `e2e.js` compara o
+pipeline JS com a fixture `test/fixture_1333/1333_sc_mapa.html`, gerada pelo gerador Python
+de referência `test/gen_mapa_1333_ref.py` (se o gerador ou os dados mudarem, regenerar a
+fixture com `python3 test/gen_mapa_1333_ref.py data/geo_sc_municipios.json test/fixture_1333`).
 
 ## Regenerando o snapshot
 

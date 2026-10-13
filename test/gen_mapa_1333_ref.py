@@ -2,23 +2,28 @@
 """Gera o mapa (HTML interativo + SVG estático) das seções com votos para
 Ju Andózio (1333), Deputada Federal — Santa Catarina, Eleições 2026 (1º turno).
 
-Uso:
-    python3 gen_mapa_1333.py [geojson_sc]
+Gerador de REFERÊNCIA (Python) usado por test/e2e.js para conferir que o pipeline
+JS (js/core.js) produz pontos idênticos, bit a bit. Não faz parte do app.
 
-Inputs (padrões relativos ao repo):
+Uso:
+    python3 test/gen_mapa_1333_ref.py [geojson_sc] [dir_saida]
+    # p/ regenerar a fixture do e2e.js:
+    python3 test/gen_mapa_1333_ref.py data/geo_sc_municipios.json test/fixture_1333
+
+Inputs (relativos à raiz do repo):
     data/1333_sc_2026.json        # extração TSE: seções com votos p/ 1333
     data/geo_sc_municipios.json   # malha municipal de SC (IBGE, GeoJSON)
 
-Outputs (na raiz do repo):
+Outputs (em dir_saida; padrão: diretório temporário):
     1333_sc_mapa.html             # mapa interativo (mouse-over por seção)
     1333_sc_mapa.svg              # versão estática (tooltips nativos <title>)
 """
-import json, math, os, random, sys, unicodedata
+import json, math, os, random, sys, tempfile, unicodedata
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(HERE)
-DATA = json.load(open(os.path.join(HERE, 'data', '1333_sc_2026.json'), encoding='utf-8'))
-GEO = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, 'data', 'geo_sc_municipios.json')
+ROOT = os.path.dirname(HERE)
+DATA = json.load(open(os.path.join(ROOT, 'data', '1333_sc_2026.json'), encoding='utf-8'))
+GEO = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, 'data', 'geo_sc_municipios.json')
 gc = json.load(open(GEO, encoding='utf-8'))
 
 TOTAL_ESPERADO = 4876
@@ -390,8 +395,10 @@ __JS__
     return page
 
 # ---- escreve ------------------------------------------------------------------
-html_out = os.path.join(HERE, '1333_sc_mapa.html')
-svg_out = os.path.join(HERE, '1333_sc_mapa.svg')
+OUT = sys.argv[2] if len(sys.argv) > 2 else tempfile.mkdtemp(prefix='mapa_1333_ref_')
+os.makedirs(OUT, exist_ok=True)
+html_out = os.path.join(OUT, '1333_sc_mapa.html')
+svg_out = os.path.join(OUT, '1333_sc_mapa.svg')
 open(html_out, 'w', encoding='utf-8').write(build_html())
 open(svg_out, 'w', encoding='utf-8').write(build_svg(with_titles=True))
 print(html_out, os.path.getsize(html_out), 'bytes')
