@@ -1,6 +1,6 @@
 :root {
-  --bg: #0e1319; --panel: #161d27; --line: #2a3543; --line2: #35507a;
-  --fg: #e8eef5; --muted: #8fa0b3; --accent: #3b82f6; --dot: #ffb454;
+  --bg: #0e1319; --panel: #161d27; --line: #2a3543; --line2: #7a353b;
+  --fg: #e8eef5; --muted: #8fa0b3; --accent: #f63b4b; --dot: #ffb454;
   --ok: #34d399; --warn: #fbbf24; --err: #f87171;
 }
 * { box-sizing: border-box; }
@@ -23,7 +23,7 @@ body {
 .brand h1 { font-size: 15.5px; font-weight: 700; margin: 0; letter-spacing: 0.2px; }
 .badge {
   display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px;
-  background: rgba(59,130,246,0.15); color: #93c5fd; border: 1px solid var(--line2);
+  background: rgba(246,59,75,0.15); color: #fd939c; border: 1px solid var(--line2);
   font-size: 11px; font-weight: 600; vertical-align: 1px;
 }
 .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -35,9 +35,9 @@ body {
 .btn:hover { border-color: var(--line2); background: #1a2432; }
 .btn:active { transform: translateY(1px); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn.primary:hover { background: #2f6fe0; }
+.btn.primary:hover { background: #e02f3e; }
 .link {
-  appearance: none; border: 0; background: none; color: #93c5fd; cursor: pointer;
+  appearance: none; border: 0; background: none; color: #fd939c; cursor: pointer;
   font: 600 inherit; padding: 0; text-decoration: underline; text-underline-offset: 3px;
 }
 /* ---------- layout ---------- */
@@ -55,7 +55,7 @@ body {
   padding: 48px 28px 36px; text-align: center;
   transition: border-color .15s, background .15s;
 }
-.dropzone.dragover { border-color: var(--accent); background: rgba(59,130,246,0.07); }
+.dropzone.dragover { border-color: var(--accent); background: rgba(246,59,75,0.07); }
 .dz-icon { width: 84px; height: 84px; margin-bottom: 6px; }
 .dropzone h2 { margin: 6px 0 8px; font-size: 21px; font-weight: 700; }
 .dropzone p { max-width: 640px; margin: 0 auto 18px; color: var(--muted); font-size: 13.5px; }
@@ -68,7 +68,7 @@ body {
 }
 .fmt { text-align: left; max-width: 720px; margin: 26px auto 0; }
 .fmt summary {
-  cursor: pointer; font-weight: 600; color: #93c5fd; font-size: 13px;
+  cursor: pointer; font-weight: 600; color: #fd939c; font-size: 13px;
   padding: 8px 0; user-select: none;
 }
 .fmt p { color: var(--muted); font-size: 12.5px; }
@@ -77,7 +77,7 @@ body {
   padding: 14px 16px; overflow-x: auto; font: 12px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color: #c9d6e3;
 }
-.fmt code { color: #93c5fd; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+.fmt code { color: #fd939c; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
 /* ---------- resultados ---------- */
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
 .chip {
@@ -133,7 +133,7 @@ body {
 }
 .tsepanel h3 { margin: 0 0 6px; font-size: 15.5px; }
 .tsepanel p { margin: 0 0 12px; font-size: 12.5px; }
-.tsepanel code { color: #93c5fd; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; }
+.tsepanel code { color: #fd939c; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; }
 .tse-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .radio { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
 .radio input { accent-color: var(--accent); }
@@ -146,10 +146,10 @@ body {
 #tseNum { width: 170px; }
 #tseSel { max-width: 420px; }
 .tse-status { margin-top: 4px; }
-#tseStatusText { font-size: 12.5px; color: #93c5fd; margin-bottom: 5px; }
-.tse-status.error #tseStatusText { color: #fca5a5; }
+#tseStatusText { font-size: 12.5px; color: #fd939c; margin-bottom: 5px; }
+.tse-status.error #tseStatusText { color: #f87171; }
 #tseRetry { margin-top: 8px; }
 .tse-info { color: #86efac; margin: 0 0 10px; font-size: 12px; }
 .tse-bar-wrap { height: 6px; border-radius: 3px; background: #0b0f14; border: 1px solid var(--line); overflow: hidden; }
 .tse-bar { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
-.btn.active { border-color: var(--accent); background: rgba(59,130,246,0.18); }
+.btn.active { border-color: var(--accent); background: rgba(246,59,75,0.18); }

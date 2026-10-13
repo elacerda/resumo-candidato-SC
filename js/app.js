@@ -5,7 +5,7 @@
 
   // ---- paleta (idêntica à do gerador Python) ----
   const BG = '#0e1319', FILL0 = '#161d27', STROKE0 = '#2a3543',
-        ACCENT = '#3b82f6', STROKE1 = '#35507a', DOT = '#ffb454',
+        ACCENT = '#f63b4b', STROKE1 = '#7a353b', DOT = '#ffb454',
         DOT_ED = 'rgba(255,255,255,0.25)', FG = '#e8eef5', MUTED = '#8fa0b3';
   const W = 980, PAD = 14;
 
