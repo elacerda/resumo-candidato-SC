@@ -16,6 +16,152 @@
   let geo = null, geoByName = null, feats = null, ringByGeo = null, proj = null;
   let model = null;       // dataset processado
   let rawJson = null;     // objeto original carregado (para exportar)
+
+  // ---- dados oficiais TSE (download no navegador, cache IndexedDB) ----
+  const TSE_BASE = 'https://cdn.tse.jus.br/estatistica/sead/odsele/votacao_secao/';
+  const TSE_CARGOS = [
+    { id: 'DEPUTADO FEDERAL', label: 'Deputado Federal', file: 'votacao_secao_2026_SC.zip', sizeMB: 74.5 },
+    { id: 'DEPUTADO ESTADUAL', label: 'Deputado Estadual', file: 'votacao_secao_2026_SC.zip', sizeMB: 74.5 },
+    { id: 'GOVERNADOR', label: 'Governador', file: 'votacao_secao_2026_SC.zip', sizeMB: 74.5 },
+    { id: 'SENADOR', label: 'Senador', file: 'votacao_secao_2026_SC.zip', sizeMB: 74.5 },
+    { id: 'PRESIDENTE', label: 'Presidente', file: 'votacao_secao_2026_BR.zip', sizeMB: 154 }
+  ];
+  const tseMem = new Map();  // file -> {bytes, csv}
+  let tseBusy = false;
+  const IDB_NAME = 'resumo-candidato-cache', IDB_STORE = 'files';
+  function idbOpen() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open(IDB_NAME, 1);
+      r.onupgradeneeded = () => r.result.createObjectStore(IDB_STORE);
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+  }
+  async function idbGet(key) {
+    const db = await idbOpen();
+    return new Promise((res, rej) => {
+      const rq = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(key);
+      rq.onsuccess = () => res(rq.result == null ? null : rq.result);
+      rq.onerror = () => rej(rq.error);
+    });
+  }
+  async function idbSet(key, val) {
+    const db = await idbOpen();
+    return new Promise((res, rej) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(val, key);
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+    });
+  }
+  async function fetchTseFile(filename, onProgress) {
+    const url = TSE_BASE + filename;
+    let bytes = tseMem.get(filename);
+    if (bytes) return bytes;
+    if (typeof indexedDB !== 'undefined') {
+      try { const c = await idbGet(url); if (c) { bytes = c; tseMem.set(filename, bytes); onProgress({ phase: 'cached' }); return bytes; } }
+      catch (e) { /* cache indisponível */ }
+    }
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status + ' ao baixar ' + filename);
+    const total = +res.headers.get('content-length') || 0;
+    const bufs = [];
+    let got = 0;
+    const reader = res.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bufs.push(value);
+      got += value.length;
+      onProgress({ phase: 'download', got, total });
+    }
+    bytes = new Uint8Array(got);
+    let o = 0;
+    for (const b of bufs) { bytes.set(b, o); o += b.length; }
+    tseMem.set(filename, bytes);
+    if (typeof indexedDB !== 'undefined') idbSet(url, bytes).catch(() => {});
+    return bytes;
+  }
+  async function getTseCsv(filename, onProgress) {
+    let entry = tseMem.get(filename);
+    if (entry && entry.csv) return entry.csv;
+    const bytes = await fetchTseFile(filename, onProgress);
+    if (!entry) entry = { bytes };
+    if (entry.csv) return entry.csv;
+    onProgress({ phase: 'unzip' });
+    await new Promise(r => setTimeout(r, 30)); // pinta o status antes do unzip síncrono
+    const entries = window.fflate.unzipSync(bytes);
+    const csv = Object.values(entries).find(v => v.length > 1e6) || Object.values(entries)[0];
+    entry.csv = csv;
+    return csv;
+  }
+  function tseStatus(msg, pct) {
+    const el = $('tseStatus');
+    el.hidden = false;
+    $('tseStatusText').textContent = msg;
+    const bar = $('tseBar');
+    bar.style.width = pct == null ? '100%' : Math.max(3, Math.min(100, pct * 100)) + '%';
+    bar.style.opacity = pct == null ? '0.35' : '1';
+  }
+  function tseHideStatus() { $('tseStatus').hidden = true; }
+  function tseCargoSel() {
+    return TSE_CARGOS.find(c => c.id === document.querySelector('input[name="tseCargo"]:checked').value);
+  }
+  function mb(n) { return (n / 1048576).toFixed(1) + ' MB'; }
+  async function tseList() {
+    if (tseBusy) return;
+    tseBusy = true;
+    const cargo = tseCargoSel();
+    try {
+      tseStatus('Baixando ' + mb(cargo.sizeMB * 1048576) + ' do TSE (uma vez; fica em cache)…');
+      const csv = await getTseCsv(cargo.file, p => {
+        if (p.phase === 'download') tseStatus('Baixando ' + mb(p.got) + ' de ' + mb(p.total) + '…', p.got / p.total);
+        else if (p.phase === 'cached') tseStatus('Arquivo em cache no dispositivo.');
+        else if (p.phase === 'unzip') tseStatus('Descompactando (' + mb(cargo.sizeMB * 1048576) + ' → ~' + (cargo.id === 'PRESIDENTE' ? '1,5 GB' : '600 MB') + ')…');
+      });
+      tseStatus('Montando a lista de candidatos…');
+      const list = await window.TseCore.listCandidates(window.TseCore.csvChunks(csv), cargo.id);
+      const sel = $('tseSel');
+      sel.innerHTML = list.map(c =>
+        `<option value="${c.numero}">${esc(c.nome)} (${c.numero}) — ${c.votos.toLocaleString('pt-BR')} votos</option>`
+      ).join('');
+      sel.hidden = false;
+      sel.size = Math.min(8, list.length);
+      tseHideStatus();
+    } catch (e) {
+      tseStatus('Falha: ' + e.message);
+    }
+    tseBusy = false;
+  }
+  async function tseMap() {
+    if (tseBusy) return;
+    const cargo = tseCargoSel();
+    const numero = ($('tseNum').value.trim() || ($('tseSel').value || ''));
+    if (!numero) { tseStatus('Informe o número do candidato ou escolha na lista.'); return; }
+    tseBusy = true;
+    try {
+      tseStatus('Baixando ' + mb(cargo.sizeMB * 1048576) + ' do TSE (uma vez; fica em cache)…');
+      const csv = await getTseCsv(cargo.file, p => {
+        if (p.phase === 'download') tseStatus('Baixando ' + mb(p.got) + ' de ' + mb(p.total) + '…', p.got / p.total);
+        else if (p.phase === 'cached') tseStatus('Arquivo em cache no dispositivo.');
+        else if (p.phase === 'unzip') tseStatus('Descompactando…');
+      });
+      tseStatus('Extraindo as seções com voto do candidato ' + numero + '…');
+      const ds = await window.TseCore.candidateDataset(window.TseCore.csvChunks(csv), { cargo: cargo.id, numero });
+      if (!ds.sections.length) { tseStatus('Este candidato não tem votos em seções de SC (' + cargo.label + ').'); return; }
+      const nome = titleCase(ds.nome || '');
+      loadDataset({
+        total: ds.total, mun: ds.mun, sections: ds.sections,
+        candidato: nome, numero, cargo: cargo.label,
+        eleicao: 'Eleições 2026 · 1º turno (04/10)',
+        fonte: 'TSE · ' + cargo.file
+      });
+      tseHideStatus();
+    } catch (e) {
+      tseStatus('Falha: ' + e.message);
+    }
+    tseBusy = false;
+  }
   let drag = null;        // estado do pan
   let vb = null;          // viewBox atual
   const VB = { w: 0, h: 0 };
@@ -139,6 +285,7 @@
     if (m.numero) chips.push(['Número', m.numero]);
     if (m.cargo) chips.push(['Cargo', m.cargo]);
     if (m.eleicao) chips.push(['Eleição', m.eleicao]);
+    if (m.fonte) chips.push(['Fonte', m.fonte]);
     chips.push(['Votos totais', model.totalVotos.toLocaleString('pt-BR')]);
     chips.push(['Seções com voto', model.nSec.toLocaleString('pt-BR')]);
     chips.push(['Municípios', `${model.nMun} de ${model.nMunTotal}`]);
@@ -317,6 +464,27 @@
     $('fileInput').addEventListener('change', ev => { handleFile(ev.target.files[0]); ev.target.value = ''; });
     $('btnSample').addEventListener('click', loadSample);
     $('btnSample2').addEventListener('click', loadSample);
+    $('btnTse').addEventListener('click', () => {
+      const p = $('tsePanel');
+      p.hidden = !p.hidden;
+      if (!p.hidden) $('btnTse').classList.add('active'); else $('btnTse').classList.remove('active');
+    });
+    $('tseGoDrop').addEventListener('click', () => {
+      $('tsePanel').hidden = false;
+      $('btnTse').classList.add('active');
+      $('tsePanel').scrollIntoView({ behavior: 'smooth' });
+    });
+    document.querySelectorAll('input[name="tseCargo"]').forEach(r =>
+      r.addEventListener('change', () => {
+        const sel = $('tseSel');
+        sel.hidden = true;
+        $('tseNum').value = '';
+        $('tseSize').textContent = tseCargoSel().sizeMB + ' MB';
+        $('tseBig').hidden = tseCargoSel().id !== 'PRESIDENTE';
+      }));
+    $('btnTseList').addEventListener('click', tseList);
+    $('btnTseMap').addEventListener('click', tseMap);
+    $('tseNum').addEventListener('keydown', ev => { if (ev.key === 'Enter') tseMap(); });
     $('btnSvg').addEventListener('click', () => download(baseName() + '.svg', svgParts(true).body, 'image/svg+xml'));
     $('btnJson').addEventListener('click', () => download(baseName() + '.json', JSON.stringify(rawJson, null, 2), 'application/json'));
 

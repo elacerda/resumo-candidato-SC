@@ -15,7 +15,8 @@
     <h1>Resumo Candidato <span class="badge">SC</span></h1>
   </div>
   <div class="actions">
-    <button id="btnLoad" class="btn primary">Carregar JSON</button>
+    <button id="btnTse" class="btn primary">Dados do TSE (2026)</button>
+    <button id="btnLoad" class="btn">Carregar JSON</button>
     <button id="btnSample" class="btn">Exemplo (1333)</button>
     <span id="fileActions" hidden>
       <button id="btnSvg" class="btn">Baixar SVG</button>
@@ -26,6 +27,33 @@
 </header>
 
 <main class="wrap">
+  <section id="tsePanel" class="tsepanel" hidden>
+    <h3>Dados oficiais do TSE — Eleições 2026, Santa Catarina</h3>
+    <p class="dim">Consulta direta aos dados abertos do TSE (<code>cdn.tse.jus.br</code>).
+    Primeiro uso: o arquivo é baixado <strong>uma única vez</strong> e fica em cache no seu dispositivo
+    (nada é enviado a nenhum servidor).</p>
+    <div class="tse-row">
+      <label class="radio"><input type="radio" name="tseCargo" value="DEPUTADO FEDERAL" checked> Deputado Federal</label>
+      <label class="radio"><input type="radio" name="tseCargo" value="DEPUTADO ESTADUAL"> Deputado Estadual</label>
+      <label class="radio"><input type="radio" name="tseCargo" value="GOVERNADOR"> Governador</label>
+      <label class="radio"><input type="radio" name="tseCargo" value="SENADOR"> Senador</label>
+      <label class="radio"><input type="radio" name="tseCargo" value="PRESIDENTE"> Presidente</label>
+      <span class="tse-size">arquivo: <b id="tseSize">74,5</b> MB</span>
+    </div>
+    <p id="tseBig" class="tse-big" hidden>⚠ O arquivo do Presidente é o conjunto nacional (154 MB) —
+    o primeiro carregamento pode demorar conforme a sua conexão.</p>
+    <div class="tse-row">
+      <input id="tseNum" class="input" inputmode="numeric" maxlength="6" placeholder="número do candidato (ex.: 1333)">
+      <button id="btnTseList" class="btn">Listar candidatos</button>
+      <select id="tseSel" class="input" hidden></select>
+      <button id="btnTseMap" class="btn primary">Mostrar mapa</button>
+    </div>
+    <div id="tseStatus" class="tse-status" hidden>
+      <div id="tseStatusText"></div>
+      <div class="tse-bar-wrap"><div id="tseBar" class="tse-bar"></div></div>
+    </div>
+  </section>
+
   <section id="dropZone" class="dropzone">
     <svg class="dz-icon" viewBox="0 0 96 96" aria-hidden="true">
       <rect x="8" y="14" width="80" height="60" rx="8" fill="none" stroke="#35507a" stroke-width="3"/>
@@ -42,6 +70,8 @@
     <div class="dz-alt">
       Ou comece pelo exemplo:
       <button id="btnSample2" class="btn">1333 — SC (2026)</button>
+      <span class="dim"> · </span>ou use os
+      <button id="tseGoDrop" class="link">dados oficiais do TSE (2026)</button>
     </div>
     <div class="err" id="errBox" hidden></div>
     <details class="fmt">
@@ -88,7 +118,9 @@
 
 <div id="tip"></div>
 
+<script src="js/fflate.js"></script>
 <script src="js/core.js"></script>
+<script src="js/tse.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

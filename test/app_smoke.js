@@ -19,11 +19,13 @@ function makeEl(tag) {
     getScreenCTM() { return null; }
   };
 }
-const IDS = ['dropZone','results','fileActions','errBox','btnLoad','fileInput','btnSample','btnSample2','btnSvg','btnJson','chips','warnBox','mapBox','hudTitle','hudLegend','tip'];
+const IDS = ['dropZone','results','fileActions','errBox','btnLoad','fileInput','btnSample','btnSample2','btnSvg','btnJson','chips','warnBox','mapBox','hudTitle','hudLegend','tip','btnTse','tsePanel','tseGoDrop','tseNum','btnTseList','btnTseMap','tseSel','tseStatus','tseStatusText','tseBar','tseSize','tseBig'];
 const els = {};
 IDS.forEach(id => els[id] = makeEl(id));
 const doc = {
   getElementById: id => els[id] || (els[id] = makeEl(id)),
+  querySelector: () => null,
+  querySelectorAll: () => [],
   createElement: t => makeEl(t),
   addEventListener(type, fn) { (this.listeners = this.listeners || {})[type] = fn; },
   body: makeEl('body')

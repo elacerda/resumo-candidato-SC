@@ -223,7 +223,8 @@
       numero: obj.numero != null ? String(obj.numero) : '',
       cargo: obj.cargo != null ? String(obj.cargo) : '',
       estado: obj.estado != null ? String(obj.estado) : 'SC',
-      eleicao: obj.eleicao != null ? String(obj.eleicao) : ''
+      eleicao: obj.eleicao != null ? String(obj.eleicao) : '',
+      fonte: obj.fonte != null ? String(obj.fonte) : ''
     };
     return { ok: true, meta, mun: obj.mun, sections, total: Number(obj.total) || sections.reduce((a, s) => a + s.votos, 0) };
   }
