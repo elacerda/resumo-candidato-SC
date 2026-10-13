@@ -1,0 +1,39 @@
+name: TSE sync (snapshot 2026)
+
+# Re-gera o snapshot de seções/votos (data/tse_2026) a partir dos zips
+# oficiais do TSE e commita as mudanças. Assim o app consulta candidatos
+# por número na mesma origem do Pages, sem baixar o CSV no navegador.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * *'   # 06:00 UTC (03:00 Brasília)
+  push:
+    branches: [main]
+    paths:
+      - 'sync/tse_sync.py'
+      - '.github/workflows/tse-sync.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Gerar snapshot
+        run: python3 sync/tse_sync.py --out data/tse_2026
+      - name: Commitar snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/tse_2026
+          if git diff --cached --quiet; then
+            echo "Snapshot sem mudanças; nada a commitar."
+          else
+            git commit -m "chore(tse): atualiza snapshot 2026 ($(date -u +%Y-%m-%d))"
+            git push
+          fi

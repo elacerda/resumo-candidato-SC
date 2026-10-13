@@ -28,6 +28,7 @@
   ];
   const tseMem = new Map();  // file -> {bytes, csv}
   let tseBusy = false;
+  let tseRetryFn = null;   // última ação TSE (botão Tentar novamente)
   const IDB_NAME = 'resumo-candidato-cache', IDB_STORE = 'files';
   function idbOpen() {
     return new Promise((res, rej) => {
@@ -95,9 +96,64 @@
     entry.csv = csv;
     return csv;
   }
+  // ---- snapshot TSE: pré-computado no repositório (sync/tse_sync.py + GitHub
+  // Actions). Consulta por número sem baixar o CSV do CDN; o download direto
+  // continua funcionando como fallback. ----
+  const SNAP_BASE = 'data/tse_2026/';
+  const snapMem = new Map();      // nome de arquivo -> JSON parseado
+  let snapIndex = null;           // index.json (null = indisponível)
+  let snapIndexTried = false;
+  async function getSnapIndex() {
+    if (snapIndexTried) return snapIndex;
+    snapIndexTried = true;
+    try {
+      const res = await fetch(SNAP_BASE + 'index.json');
+      if (res.ok) snapIndex = await res.json();
+    } catch (e) { /* sem snapshot -> fallback CDN */ }
+    return snapIndex;
+  }
+  async function getSnapFile(name) {
+    const hit = snapMem.get(name);
+    if (hit) return hit;
+    const res = await fetch(SNAP_BASE + name);
+    if (!res.ok) throw new Error('HTTP ' + res.status + ' em ' + name);
+    const j = await res.json();
+    snapMem.set(name, j);
+    return j;
+  }
+  async function snapDataset(cargoId, numero) {
+    const idx = await getSnapIndex();
+    const c = idx && idx.cargos[cargoId];
+    if (!c || !c.candidatos || !c.candidatos[numero]) return null;
+    const [snap, secoes] = await Promise.all([
+      getSnapFile(c.arquivo),
+      getSnapFile(idx.secoes || 'secoes.json')
+    ]);
+    const meta = c.candidatos[numero];
+    const munObj = {}; const sections = [];
+    for (const [sIdx, v] of snap.cand[numero]) {
+      const s = secoes.secoes[sIdx];
+      const [code, nome] = secoes.mun[s[0]];
+      const m = munObj[code] || (munObj[code] = { nome, votos: 0, secoes: 0 });
+      m.votos += v; m.secoes += 1;
+      sections.push({ muni: code, muni_nome: nome, zona: s[1], secao: s[2],
+                      votos: v, local: s[3], end: s[4] });
+    }
+    return { total: meta[1], mun: munObj, sections, nome: meta[0] };
+  }
+  function snapInfoLine() {
+    const el = $('tseInfo');
+    if (!snapIndex) { el.hidden = true; el.textContent = ''; return; }
+    el.hidden = false;
+    el.textContent = '✔ Snapshot do TSE no servidor (gerado em ' +
+      new Date(snapIndex.gerado_em).toLocaleDateString('pt-BR') +
+      '): lista e mapa por número na hora, sem download. Números fora do snapshot ' +
+      'usam o arquivo do CDN.';
+  }
   function tseStatus(msg, pct) {
     const el = $('tseStatus');
     el.hidden = false;
+    el.classList.remove('error');
     $('tseStatusText').textContent = msg;
     const bar = $('tseBar');
     bar.style.width = pct == null ? '100%' : Math.max(3, Math.min(100, pct * 100)) + '%';
@@ -111,9 +167,30 @@
   async function tseList() {
     if (tseBusy) return;
     tseBusy = true;
+    tseRetryFn = tseList;
+    $('tseRetry').hidden = true;
     const cargo = tseCargoSel();
     try {
-      tseStatus('Baixando ' + mb(cargo.sizeMB * 1048576) + ' do TSE (uma vez; fica em cache)…');
+      tseStatus('Verificando snapshot do TSE…');
+      const idx = await getSnapIndex();
+      snapInfoLine();
+      const c = idx && idx.cargos[cargo.id];
+      if (c && c.candidatos && Object.keys(c.candidatos).length) {
+        tseStatus('Montando a lista de candidatos…');
+        const list = Object.entries(c.candidatos)
+          .map(([numero, m]) => ({ numero, nome: m[0], votos: m[1] }))
+          .sort((a, b) => b.votos - a.votos);
+        const sel = $('tseSel');
+        sel.innerHTML = list.map(x =>
+          `<option value="${x.numero}">${esc(x.nome)} (${x.numero}) — ${x.votos.toLocaleString('pt-BR')} votos</option>`
+        ).join('');
+        sel.hidden = false;
+        sel.size = Math.min(8, list.length);
+        tseHideStatus();
+        return;
+      }
+      // sem snapshot para este cargo -> download do CDN
+      tseStatus('Sem snapshot para este cargo; baixando ' + mb(cargo.sizeMB * 1048576) + ' do TSE (uma vez; fica em cache)…');
       const csv = await getTseCsv(cargo.file, p => {
         if (p.phase === 'download') tseStatus('Baixando ' + mb(p.got) + ' de ' + mb(p.total) + '…', p.got / p.total);
         else if (p.phase === 'cached') tseStatus('Arquivo em cache no dispositivo.');
@@ -122,16 +199,17 @@
       tseStatus('Montando a lista de candidatos…');
       const list = await window.TseCore.listCandidates(window.TseCore.csvChunks(csv), cargo.id);
       const sel = $('tseSel');
-      sel.innerHTML = list.map(c =>
-        `<option value="${c.numero}">${esc(c.nome)} (${c.numero}) — ${c.votos.toLocaleString('pt-BR')} votos</option>`
+      sel.innerHTML = list.map(x =>
+        `<option value="${x.numero}">${esc(x.nome)} (${x.numero}) — ${x.votos.toLocaleString('pt-BR')} votos</option>`
       ).join('');
       sel.hidden = false;
       sel.size = Math.min(8, list.length);
       tseHideStatus();
     } catch (e) {
-      tseStatus('Falha: ' + e.message);
+      tseError(e);
+    } finally {
+      tseBusy = false;
     }
-    tseBusy = false;
   }
   async function tseMap() {
     if (tseBusy) return;
@@ -139,7 +217,29 @@
     const numero = ($('tseNum').value.trim() || ($('tseSel').value || ''));
     if (!numero) { tseStatus('Informe o número do candidato ou escolha na lista.'); return; }
     tseBusy = true;
+    tseRetryFn = tseMap;
+    $('tseRetry').hidden = true;
     try {
+      tseStatus('Verificando snapshot do TSE…');
+      const idx = await getSnapIndex();
+      snapInfoLine();
+      const c = idx && idx.cargos[cargo.id];
+      if (c && c.candidatos && c.candidatos[numero]) {
+        tseStatus('Carregando as seções do candidato ' + numero + ' (snapshot, sem download)…');
+        const ds = await snapDataset(cargo.id, numero);
+        if (ds && ds.sections.length) {
+          const nome = titleCase(ds.nome || '');
+          loadDataset({
+            total: ds.total, mun: ds.mun, sections: ds.sections,
+            candidato: nome, numero, cargo: cargo.label,
+            eleicao: 'Eleições 2026 · 1º turno (04/10)',
+            fonte: 'TSE · snapshot de ' + new Date(idx.gerado_em).toLocaleDateString('pt-BR')
+          });
+          tseHideStatus();
+          return;
+        }
+      }
+      // fallback: download direto do CDN (sem snapshot, ou número fora dele)
       tseStatus('Baixando ' + mb(cargo.sizeMB * 1048576) + ' do TSE (uma vez; fica em cache)…');
       const csv = await getTseCsv(cargo.file, p => {
         if (p.phase === 'download') tseStatus('Baixando ' + mb(p.got) + ' de ' + mb(p.total) + '…', p.got / p.total);
@@ -158,9 +258,27 @@
       });
       tseHideStatus();
     } catch (e) {
-      tseStatus('Falha: ' + e.message);
+      tseError(e);
+    } finally {
+      tseBusy = false;
     }
-    tseBusy = false;
+  }
+  function tseError(e) {
+    tseStatus('Falha: ' + describeTseError(e));
+    $('tseStatus').classList.add('error');
+    $('tseRetry').hidden = false;
+  }
+  function describeTseError(e) {
+    if (e && e.name === 'AbortError') return 'download cancelado.';
+    const m = (e && e.message) || String(e);
+    if (/failed to fetch|networkerror|load failed|network request failed/i.test(m)) {
+      return 'Falha de rede ao acessar cdn.tse.jus.br. Verifique sua conexão: adblocker, ' +
+        'proxy corporativo ou VPN costumam causar isso. Tente novamente — ou use a lista ' +
+        'de candidatos do snapshot, que não precisa de download.';
+    }
+    if (/HTTP 404/.test(m)) return 'arquivo ainda não está disponível no CDN do TSE.';
+    if (/HTTP 403/.test(m)) return 'acesso negado pelo CDN do TSE; tente novamente mais tarde.';
+    return m;
   }
   let drag = null;        // estado do pan
   let vb = null;          // viewBox atual
@@ -484,6 +602,10 @@
       }));
     $('btnTseList').addEventListener('click', tseList);
     $('btnTseMap').addEventListener('click', tseMap);
+    $('tseRetry').addEventListener('click', () => {
+      $('tseRetry').hidden = true;
+      if (tseRetryFn) tseRetryFn();
+    });
     $('tseNum').addEventListener('keydown', ev => { if (ev.key === 'Enter') tseMap(); });
     $('btnSvg').addEventListener('click', () => download(baseName() + '.svg', svgParts(true).body, 'image/svg+xml'));
     $('btnJson').addEventListener('click', () => download(baseName() + '.json', JSON.stringify(rawJson, null, 2), 'application/json'));
