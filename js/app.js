@@ -28,6 +28,7 @@
   ];
   const tseMem = new Map();  // file -> {bytes, csv}
   let tseBusy = false;
+  let tseAbort = null;      // AbortController do download em curso
   let tseRetryFn = null;   // última ação TSE (botão Tentar novamente)
   const IDB_NAME = 'resumo-candidato-cache', IDB_STORE = 'files';
   function idbOpen() {
@@ -55,7 +56,7 @@
       tx.onerror = () => rej(tx.error);
     });
   }
-  async function fetchTseFile(filename, onProgress) {
+  async function fetchTseFile(filename, onProgress, signal) {
     const url = TSE_BASE + filename;
     let bytes = tseMem.get(filename);
     if (bytes) return bytes;
@@ -63,7 +64,7 @@
       try { const c = await idbGet(url); if (c) { bytes = c; tseMem.set(filename, bytes); onProgress({ phase: 'cached' }); return bytes; } }
       catch (e) { /* cache indisponível */ }
     }
-    const res = await fetch(url);
+    const res = await fetch(url, signal ? { signal } : undefined);
     if (!res.ok) throw new Error('HTTP ' + res.status + ' ao baixar ' + filename);
     const total = +res.headers.get('content-length') || 0;
     const bufs = [];
@@ -83,10 +84,10 @@
     if (typeof indexedDB !== 'undefined') idbSet(url, bytes).catch(() => {});
     return bytes;
   }
-  async function getTseCsv(filename, onProgress) {
+  async function getTseCsv(filename, onProgress, signal) {
     let entry = tseMem.get(filename);
     if (entry && entry.csv) return entry.csv;
-    const bytes = await fetchTseFile(filename, onProgress);
+    const bytes = await fetchTseFile(filename, onProgress, signal);
     if (!entry) entry = { bytes };
     if (entry.csv) return entry.csv;
     onProgress({ phase: 'unzip' });
@@ -101,11 +102,9 @@
   // continua funcionando como fallback. ----
   const SNAP_BASE = 'data/tse_2026/';
   const snapMem = new Map();      // nome de arquivo -> JSON parseado
-  let snapIndex = null;           // index.json (null = indisponível)
-  let snapIndexTried = false;
+  let snapIndex = null;           // index.json (null = indisponível; re-tenta até carregar)
   async function getSnapIndex() {
-    if (snapIndexTried) return snapIndex;
-    snapIndexTried = true;
+    if (snapIndex) return snapIndex;
     try {
       const res = await fetch(SNAP_BASE + 'index.json');
       if (res.ok) snapIndex = await res.json();
@@ -163,7 +162,7 @@
   function tseCargoSel() {
     return TSE_CARGOS.find(c => c.id === document.querySelector('input[name="tseCargo"]:checked').value);
   }
-  function mb(n) { return (n / 1048576).toFixed(1) + ' MB'; }
+  function mb(n) { return (n / 1048576).toFixed(1).replace('.', ',') + ' MB'; }
   async function tseList() {
     if (tseBusy) return;
     tseBusy = true;
@@ -191,11 +190,13 @@
       }
       // sem snapshot para este cargo -> download do CDN
       tseStatus('Sem snapshot para este cargo; baixando ' + mb(cargo.sizeMB * 1048576) + ' do TSE (uma vez; fica em cache)…');
+      tseAbort = new AbortController();
+      $('tseCancel').hidden = false;
       const csv = await getTseCsv(cargo.file, p => {
         if (p.phase === 'download') tseStatus('Baixando ' + mb(p.got) + ' de ' + mb(p.total) + '…', p.got / p.total);
         else if (p.phase === 'cached') tseStatus('Arquivo em cache no dispositivo.');
         else if (p.phase === 'unzip') tseStatus('Descompactando (' + mb(cargo.sizeMB * 1048576) + ' → ~' + (cargo.id === 'PRESIDENTE' ? '1,5 GB' : '600 MB') + ')…');
-      });
+      }, tseAbort.signal);
       tseStatus('Montando a lista de candidatos…');
       const list = await window.TseCore.listCandidates(window.TseCore.csvChunks(csv), cargo.id);
       const sel = $('tseSel');
@@ -206,9 +207,12 @@
       sel.size = Math.min(8, list.length);
       tseHideStatus();
     } catch (e) {
+      if (e && e.name === 'AbortError') { tseStatus('Download cancelado.'); return; }
       tseError(e);
     } finally {
       tseBusy = false;
+      $('tseCancel').hidden = true;
+      tseAbort = null;
     }
   }
   async function tseMap() {
@@ -229,62 +233,90 @@
         const ds = await snapDataset(cargo.id, numero);
         if (ds && ds.sections.length) {
           const nome = titleCase(ds.nome || '');
-          loadDataset({
+          await loadDataset({
             total: ds.total, mun: ds.mun, sections: ds.sections,
             candidato: nome, numero, cargo: cargo.label,
-            eleicao: 'Eleições 2026 · 1º turno (04/10)',
+            eleicao: eleicaoLabel(idx),
             fonte: 'TSE · snapshot de ' + new Date(idx.gerado_em).toLocaleDateString('pt-BR')
           });
           tseHideStatus();
           return;
         }
       }
-      // fallback: download direto do CDN (sem snapshot, ou número fora dele)
+      if (c && c.candidatos && Object.keys(c.candidatos).length) {
+        tseStatus('Número ' + numero + ' não encontrado nos dados do TSE para ' + cargo.label +
+          ' (1º turno; snapshot de ' + new Date(idx.gerado_em).toLocaleDateString('pt-BR') +
+          '). Use “Listar candidatos” para ver os números válidos.');
+        return;
+      }
+      // fallback: download direto do CDN (sem snapshot para este cargo)
       tseStatus('Baixando ' + mb(cargo.sizeMB * 1048576) + ' do TSE (uma vez; fica em cache)…');
+      tseAbort = new AbortController();
+      $('tseCancel').hidden = false;
       const csv = await getTseCsv(cargo.file, p => {
         if (p.phase === 'download') tseStatus('Baixando ' + mb(p.got) + ' de ' + mb(p.total) + '…', p.got / p.total);
         else if (p.phase === 'cached') tseStatus('Arquivo em cache no dispositivo.');
         else if (p.phase === 'unzip') tseStatus('Descompactando…');
-      });
+      }, tseAbort.signal);
       tseStatus('Extraindo as seções com voto do candidato ' + numero + '…');
       const ds = await window.TseCore.candidateDataset(window.TseCore.csvChunks(csv), { cargo: cargo.id, numero });
       if (!ds.sections.length) { tseStatus('Este candidato não tem votos em seções de SC (' + cargo.label + ').'); return; }
       const nome = titleCase(ds.nome || '');
-      loadDataset({
+      await loadDataset({
         total: ds.total, mun: ds.mun, sections: ds.sections,
         candidato: nome, numero, cargo: cargo.label,
-        eleicao: 'Eleições 2026 · 1º turno (04/10)',
+        eleicao: eleicaoLabel(null, cargo.file),
         fonte: 'TSE · ' + cargo.file
       });
       tseHideStatus();
     } catch (e) {
+      if (e && e.name === 'AbortError') { tseStatus('Download cancelado.'); return; }
       tseError(e);
     } finally {
       tseBusy = false;
+      $('tseCancel').hidden = true;
+      tseAbort = null;
     }
   }
   function tseError(e) {
-    tseStatus('Falha: ' + describeTseError(e));
+    const r = describeTseError(e);
+    tseStatus(r.msg); // textContent limpo (remove detalhe anterior, se houver)
+    if (r.detail) {
+      const d = document.createElement('div');
+      d.className = 'tse-err-detail';
+      d.textContent = 'detalhe técnico: ' + r.detail;
+      $('tseStatusText').appendChild(d);
+    }
     $('tseStatus').classList.add('error');
     $('tseRetry').hidden = false;
   }
   function describeTseError(e) {
-    if (e && e.name === 'AbortError') return 'download cancelado.';
+    if (e && e.name === 'AbortError') return { msg: 'download cancelado.' };
     const m = (e && e.message) || String(e);
     if (/failed to fetch|networkerror|load failed|network request failed/i.test(m)) {
-      return 'Falha de rede ao acessar cdn.tse.jus.br. Verifique sua conexão: adblocker, ' +
+      return { msg: 'Falha de rede ao acessar cdn.tse.jus.br. Verifique sua conexão: adblocker, ' +
         'proxy corporativo ou VPN costumam causar isso. Tente novamente — ou use a lista ' +
-        'de candidatos do snapshot, que não precisa de download.';
+        'de candidatos do snapshot, que não precisa de download.' };
     }
-    if (/HTTP 404/.test(m)) return 'arquivo ainda não está disponível no CDN do TSE.';
-    if (/HTTP 403/.test(m)) return 'acesso negado pelo CDN do TSE; tente novamente mais tarde.';
-    return m;
+    if (/HTTP 404/.test(m)) return { msg: 'arquivo ainda não está disponível no CDN do TSE.', detail: m };
+    if (/HTTP 403/.test(m)) return { msg: 'acesso negado pelo CDN do TSE; tente novamente mais tarde.', detail: m };
+    return { msg: 'falha inesperada ao consultar o TSE.', detail: m };
+  }
+  function eleicaoLabel(idx, cargoFile) {
+    const ano = (idx && idx.eleicao) || (cargoFile && (cargoFile.match(/votacao_secao_(\d+)/) || [])[1]) || '2026';
+    return 'Eleições ' + ano + ' · 1º turno';
   }
   let drag = null;        // estado do pan
   let vb = null;          // viewBox atual
+  let mapZoom = null;     // api de zoom exposta (botões +/−/⟲)
   const VB = { w: 0, h: 0 };
 
   // ---------------- carga da malha ----------------
+  let geoPromise = null, geoFailed = null;
+  function ensureGeo() {
+    if (!geoPromise) geoPromise = loadGeo().catch(e => { geoFailed = e; throw e; });
+    return geoPromise;
+  }
   async function loadGeo() {
     const res = await fetch('data/geo_sc_municipios.json');
     geo = await res.json();
@@ -353,9 +385,13 @@
   // ---------------- construção do SVG ----------------
   function svgParts(withTitles) {
     const W2 = W + 2 * PAD, H2 = proj.H + 2 * PAD;
+    const m = model.meta;
+    const aria = (m.candidato ? m.candidato + (m.numero ? ' (' + m.numero + ')' : '') + ' — ' : '') +
+      (m.cargo || 'seções com voto') + ', Santa Catarina. ' +
+      model.totalVotos.toLocaleString('pt-BR') + ' votos em ' + model.nSec.toLocaleString('pt-BR') +
+      ' seções, ' + model.nMun + ' de ' + model.nMunTotal + ' municípios. Cada ponto = 1 seção com voto.';
     const parts = [];
-    if (!withTitles) parts.push(`<svg id="map" viewBox="0 0 ${W2} ${H2}" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, -apple-system, sans-serif">`);
-    else parts.push(`<svg id="map" viewBox="0 0 ${W2} ${H2}" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, -apple-system, sans-serif">`);
+    parts.push(`<svg id="map" viewBox="0 0 ${W2} ${H2}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${esc(aria)}" font-family="system-ui, -apple-system, sans-serif">`);
     parts.push(`<rect x="0" y="0" width="${W2}" height="${H2}" fill="${BG}"/>`);
     for (const [g, nome, ring] of feats) {
       const d = 'M ' + Core.decimate(ring, 3).map(p => proj.P(p[0], p[1]).join(' ')).join(' L ') + ' Z';
@@ -394,20 +430,27 @@
     $('hudLegend').innerHTML =
       `<div class="l1">votos por município:</div>` +
       `<svg width="120" height="9">${sw}</svg>` +
-      `<div class="l2"><span>0</span><span class="d"></span><span>1 seção</span><span style="flex:1"></span><span>${model.maxmun.toLocaleString('pt-BR')}${model.maxMunNome ? ' (' + esc(model.maxMunNome) + ')' : ''}</span></div>`;
+      `<div class="l2"><span>0</span><span style="flex:1"></span><span>${model.maxmun.toLocaleString('pt-BR')}${model.maxMunNome ? ' (' + esc(model.maxMunNome) + ')' : ''}</span></div>` +
+      `<div class="l2"><span class="d"></span><span>1 ponto = 1 seção com voto · raio ∝ votos</span></div>`;
   }
   function renderChips() {
     const m = model.meta;
-    const chips = [];
-    if (m.candidato) chips.push(['Candidata/o', m.candidato]);
-    if (m.numero) chips.push(['Número', m.numero]);
-    if (m.cargo) chips.push(['Cargo', m.cargo]);
-    if (m.eleicao) chips.push(['Eleição', m.eleicao]);
-    if (m.fonte) chips.push(['Fonte', m.fonte]);
-    chips.push(['Votos totais', model.totalVotos.toLocaleString('pt-BR')]);
-    chips.push(['Seções com voto', model.nSec.toLocaleString('pt-BR')]);
-    chips.push(['Municípios', `${model.nMun} de ${model.nMunTotal}`]);
-    $('chips').innerHTML = chips.map(([k, v]) => `<span class="chip"><span class="k">${esc(k)}</span> ${esc(v)}</span>`).join('');
+    const ident = [];
+    if (m.candidato) ident.push(['Candidata/o', m.candidato]);
+    if (m.numero) ident.push(['Número', m.numero]);
+    if (m.cargo) ident.push(['Cargo', m.cargo]);
+    if (m.eleicao) ident.push(['Eleição', m.eleicao]);
+    if (m.fonte) ident.push(['Fonte', m.fonte]);
+    const metrics = [
+      ['Votos totais', model.totalVotos.toLocaleString('pt-BR')],
+      ['Seções com voto', model.nSec.toLocaleString('pt-BR')],
+      ['Municípios', `${model.nMun} de ${model.nMunTotal}`]
+    ];
+    const chip = (k, v, metric) =>
+      `<span class="chip${metric ? ' metric' : ''}"><span class="k">${esc(k)}</span> ${esc(v)}</span>`;
+    $('chips').innerHTML =
+      `<span class="chips-g">${ident.map(([k, v]) => chip(k, v, false)).join('')}</span>` +
+      `<span class="chips-g metrics">${metrics.map(([k, v]) => chip(k, v, true)).join('')}</span>`;
   }
   function renderWarnings() {
     const box = $('warnBox');
@@ -449,6 +492,17 @@
         lbls[i].setAttribute('stroke-width', (baseHalo * s).toFixed(2));
       }
     }
+    function zoomBy(f) {
+      const cx = vb.x + vb.w / 2, cy = vb.y + vb.h / 2;
+      const nw = Math.min(W2, Math.max(MIN_W, vb.w / f));
+      const k = nw / vb.w;
+      vb.x = cx - (cx - vb.x) * k;
+      vb.y = cy - (cy - vb.y) * k;
+      vb.w = nw; vb.h = H2 * (nw / W2);
+      apply();
+    }
+    function resetView() { vb = { x: 0, y: 0, w: W2, h: H2 }; apply(); }
+    mapZoom = { zoomBy, resetView };
     function toSvg(ev) {
       const m = svg.getScreenCTM();
       if (!m) return { x: 0, y: 0 };
@@ -489,8 +543,7 @@
     });
     svg.addEventListener('dblclick', ev => {
       ev.preventDefault();
-      vb = { x: 0, y: 0, w: W2, h: H2 };
-      apply();
+      resetView();
     });
 
     // tooltip
@@ -515,6 +568,11 @@
       else if (tip.style.display === 'block') tip.style.display = 'none';
     });
     svg.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+    svg.addEventListener('click', ev => {
+      const t = ev.target;
+      if (t.classList && t.classList.contains('dot')) showTip(model.dots[+t.dataset.i].s, ev.clientX, ev.clientY);
+      else if (tip.style.display === 'block') tip.style.display = 'none';
+    });
   }
 
   // ---------------- carregar dataset ----------------
@@ -526,19 +584,24 @@
     $('errBox').hidden = false;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
-  function loadDataset(obj) {
+  async function loadDataset(obj) {
     $('errBox').hidden = true;
+    try { await ensureGeo(); }
+    catch (e) {
+      showError('Falha ao carregar a malha municipal de SC (data/geo_sc_municipios.json) — tente novamente.');
+      return false;
+    }
     const ds = Core.parseDataset(obj);
-    if (!ds.ok) { showError(ds.errors.join(' ')); return; }
+    if (!ds.ok) { showError(ds.errors.join(' ')); return false; }
     try {
       model = buildModel(ds);
     } catch (e) {
-      showError('Falha ao processar os dados: ' + e.message);
-      return;
+      showError('Falha ao processar os dados (detalhe técnico: ' + e.message + ').');
+      return false;
     }
     if (!model.dots.length) {
       showError('Nenhum município reconhecido na malha de SC — verifique os códigos/nomes no campo "mun".');
-      return;
+      return false;
     }
     rawJson = obj;
     $('dropZone').classList.add('hidden');
@@ -548,15 +611,22 @@
     renderWarnings();
     renderHud();
     renderMap();
+    return true;
   }
   function handleFile(file) {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       let obj;
       try { obj = JSON.parse(reader.result); }
-      catch (e) { showError('Arquivo inválido: não é um JSON legível (' + e.message + ').'); return; }
-      loadDataset(obj);
+      catch (e) {
+        let det = e.message;
+        if (/unexpected token/i.test(det)) det = 'o arquivo começa com um caractere inesperado (talvez não seja JSON)';
+        else if (/unexpected end/i.test(det)) det = 'o arquivo parece estar truncado';
+        showError('Arquivo inválido: não é um JSON legível (' + det + ').');
+        return;
+      }
+      await loadDataset(obj);
     };
     reader.onerror = () => showError('Não foi possível ler o arquivo.');
     reader.readAsText(file);
@@ -597,7 +667,7 @@
         const sel = $('tseSel');
         sel.hidden = true;
         $('tseNum').value = '';
-        $('tseSize').textContent = tseCargoSel().sizeMB + ' MB';
+        $('tseSize').textContent = tseCargoSel().sizeMB.toLocaleString('pt-BR') + ' MB';
         $('tseBig').hidden = tseCargoSel().id !== 'PRESIDENTE';
       }));
     $('btnTseList').addEventListener('click', tseList);
@@ -629,8 +699,27 @@
       if (f) handleFile(f);
     });
 
+    $('btnChange').addEventListener('click', () => {
+      $('tsePanel').hidden = false;
+      $('btnTse').classList.add('active');
+      $('tsePanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const n = $('tseNum');
+      if (n.focus) n.focus();
+    });
+    $('btnClear').addEventListener('click', () => {
+      $('results').hidden = true;
+      $('fileActions').hidden = true;
+      $('dropZone').classList.remove('hidden');
+      $('tseSel').hidden = true;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    $('tseCancel').addEventListener('click', () => { if (tseAbort) tseAbort.abort(); });
+    $('zoomIn').addEventListener('click', () => { if (mapZoom) mapZoom.zoomBy(1.4); });
+    $('zoomOut').addEventListener('click', () => { if (mapZoom) mapZoom.zoomBy(1 / 1.4); });
+    $('zoomReset').addEventListener('click', () => { if (mapZoom) mapZoom.resetView(); });
+
     try {
-      await loadGeo();
+      await ensureGeo();
     } catch (e) {
       showError('Falha ao carregar a malha municipal de SC (data/geo_sc_municipios.json).');
     }
@@ -645,11 +734,11 @@
         obj.numero = '1333';
         obj.cargo = 'Deputada Federal';
         obj.estado = 'SC';
-        obj.eleicao = 'Eleições 2026 · 1º turno (04/10)';
+        obj.eleicao = 'Eleições 2026 · 1º turno';
       }
-      loadDataset(obj);
+      await loadDataset(obj);
     } catch (e) {
-      showError('Falha ao carregar o exemplo: ' + e.message);
+      showError('Falha ao carregar o exemplo (data/1333_sc_2026.json).');
     }
   }
 

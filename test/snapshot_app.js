@@ -42,8 +42,12 @@ global.document = doc;
 global.self = win;
 // fetch: serve arquivos do repo (mesma origem do Pages); CDN do TSE simula
 // falha de rede, como no navegador do usuário ("Failed to fetch").
+let blockIndex = false; // simula servidor sem o snapshot (index.json 404)
 global.fetch = url => {
   if (String(url).startsWith('https://')) return Promise.reject(new TypeError('Failed to fetch'));
+  if (blockIndex && String(url).endsWith('index.json')) {
+    return Promise.resolve({ ok: false, json: () => Promise.reject(new Error('HTTP 404')) });
+  }
   const p = path.join(ROOT, url);
   const ok = fs.existsSync(p);
   return Promise.resolve({
@@ -76,25 +80,8 @@ function check(name, pass, extra) {
   await els.btnSample.listeners.click[0]();
   check('exemplo 1333 renderizado', dots() === 3397, String(dots()));
 
-  // 2) TSE snapshot: mapa por número, sem download
-  radioCargo.value = 'DEPUTADO FEDERAL';
-  els.tseNum.value = '1333';
-  await els.btnTseMap.listeners.click[0]();
-  await new Promise(r => setTimeout(r, 50));
-  check('mapa via snapshot (3397 dots)', dots() === 3397, String(dots()));
-  check('HUD candidato 1333', els.hudTitle.innerHTML.includes('Andozio (1333)'), els.hudTitle.innerHTML.slice(0, 80));
-  check('chip de fonte cita snapshot', els.chips.innerHTML.includes('snapshot'), '');
-  check('info do snapshot visível', els.tseInfo.hidden === false && els.tseInfo.textContent.includes('Snapshot'), '');
-  check('status oculto após sucesso', els.tseStatus.hidden === true, '');
-
-  // 3) TSE snapshot: lista de candidatos
-  await els.btnTseList.listeners.click[0]();
-  await new Promise(r => setTimeout(r, 50));
-  const selHtml = els.tseSel.innerHTML;
-  check('lista via snapshot (JULIANA ANDOZIO 1333)', selHtml.includes('JULIANA ANDOZIO') && selHtml.includes('(1333)'), '');
-  check('lista em ordem de votos (top 1 primeiro)', selHtml.indexOf('2233') < selHtml.indexOf('1333'), '');
-
-  // 4) fallback CDN + falha de rede -> erro amigável + botão de retry
+  // 2) fallback CDN (sem snapshot) + falha de rede -> erro amigável + retry
+  blockIndex = true; // sem snapshot, o app vai ao CDN do TSE
   radioCargo.value = 'GOVERNADOR';
   els.tseNum.value = '0000';
   await els.btnTseMap.listeners.click[0]();
@@ -105,10 +92,39 @@ function check(name, pass, extra) {
   check('botão "Tentar novamente" visível', els.tseRetry.hidden === false, '');
   check('status em modo erro', els.tseStatus.classList.contains('error'), '');
 
-  // 5) retry reexecuta a ação
+  // 3) retry reexecuta a ação
   await els.tseRetry.listeners.click[0]();
   await new Promise(r => setTimeout(r, 50));
   check('retry reexecuta (erro reaparece)', !els.tseStatus.hidden && /Falha de rede/.test(els.tseStatusText.textContent), '');
+  blockIndex = false; // o snapshot "aparece" de volta (CI re-publicou)
+
+  // 4) TSE snapshot: mapa por número, sem download
+  radioCargo.value = 'DEPUTADO FEDERAL';
+  els.tseNum.value = '1333';
+  await els.btnTseMap.listeners.click[0]();
+  await new Promise(r => setTimeout(r, 50));
+  check('mapa via snapshot (3397 dots)', dots() === 3397, String(dots()));
+  check('HUD candidato 1333', els.hudTitle.innerHTML.includes('Andozio (1333)'), els.hudTitle.innerHTML.slice(0, 80));
+  check('chip de fonte cita snapshot', els.chips.innerHTML.includes('snapshot'), '');
+  check('info do snapshot visível', els.tseInfo.hidden === false && els.tseInfo.textContent.includes('Snapshot'), '');
+  check('status oculto após sucesso', els.tseStatus.hidden === true, '');
+
+  // 5) TSE snapshot: lista de candidatos
+  await els.btnTseList.listeners.click[0]();
+  await new Promise(r => setTimeout(r, 50));
+  const selHtml = els.tseSel.innerHTML;
+  check('lista via snapshot (JULIANA ANDOZIO 1333)', selHtml.includes('JULIANA ANDOZIO') && selHtml.includes('(1333)'), '');
+  check('lista em ordem de votos (top 1 primeiro)', selHtml.indexOf('2233') < selHtml.indexOf('1333'), '');
+
+  // 6) número ausente do snapshot -> rejeição instantânea (sem download)
+  radioCargo.value = 'GOVERNADOR';
+  els.tseNum.value = '0000';
+  await els.btnTseMap.listeners.click[0]();
+  await new Promise(r => setTimeout(r, 50));
+  const nfText = els.tseStatusText.textContent;
+  check('número ausente: rejeitado sem download', /não encontrado/.test(nfText), nfText.slice(0, 70));
+  check('número ausente: sem modo de erro', !els.tseStatus.classList.contains('error'), '');
+  check('número ausente: retry oculto', els.tseRetry.hidden === true, '');
 
   console.log(ok ? '\nSNAPSHOT OK' : '\nSNAPSHOT FALHOU');
   process.exit(ok ? 0 : 1);

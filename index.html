@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Resumo Candidato — SC · mapa de seções por candidato</title>
 <meta name="description" content="Suba a tabela JSON de seções com voto de um candidato em Santa Catarina e veja o mapa interativo — 100% no navegador, sem backend.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230e1319'/%3E%3Ccircle cx='11' cy='13' r='4' fill='%23ffb454'/%3E%3Ccircle cx='21' cy='19' r='5' fill='%233b82f6'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230e1319'/%3E%3Ccircle cx='11' cy='13' r='4' fill='%23ffb454'/%3E%3Ccircle cx='21' cy='19' r='5' fill='%23f63b4b'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -17,43 +17,45 @@
   <div class="actions">
     <button id="btnTse" class="btn primary">Dados do TSE (2026)</button>
     <button id="btnLoad" class="btn">Carregar JSON</button>
-    <button id="btnSample" class="btn">Exemplo (1333)</button>
-    <span id="fileActions" hidden>
-      <button id="btnSvg" class="btn">Baixar SVG</button>
-      <button id="btnJson" class="btn">Baixar JSON</button>
-    </span>
+    <button id="btnSample" class="btn">Exemplo 1333 (SC 2026)</button>
     <input type="file" id="fileInput" accept=".json,application/json" hidden>
   </div>
 </header>
 
 <main class="wrap">
   <section id="tsePanel" class="tsepanel" hidden>
-    <h3>Dados oficiais do TSE — Eleições 2026, Santa Catarina</h3>
+    <h2>Dados oficiais do TSE — Eleições 2026, Santa Catarina</h2>
     <p class="dim">Consulta aos dados abertos do TSE. Com o <strong>snapshot</strong> (pré-computado no
     repositório pelo GitHub Actions), a lista e o mapa por número carregam na hora, sem download.
     Sem snapshot (ou para número fora dele), o arquivo oficial (<code>cdn.tse.jus.br</code>) é baixado
     <strong>uma única vez</strong> e fica em cache no seu dispositivo (nada é enviado a nenhum servidor).</p>
-    <p id="tseInfo" class="tse-info" hidden></p>
-    <div class="tse-row">
-      <label class="radio"><input type="radio" name="tseCargo" value="DEPUTADO FEDERAL" checked> Deputado Federal</label>
-      <label class="radio"><input type="radio" name="tseCargo" value="DEPUTADO ESTADUAL"> Deputado Estadual</label>
-      <label class="radio"><input type="radio" name="tseCargo" value="GOVERNADOR"> Governador</label>
-      <label class="radio"><input type="radio" name="tseCargo" value="SENADOR"> Senador</label>
-      <label class="radio"><input type="radio" name="tseCargo" value="PRESIDENTE"> Presidente</label>
-      <span class="tse-size">arquivo: <b id="tseSize">74,5</b> MB</span>
-    </div>
+    <p id="tseInfo" class="tse-info" hidden role="status"></p>
+    <fieldset class="tse-fieldset">
+      <legend class="tse-legend">Cargo</legend>
+      <div class="tse-row">
+        <label class="radio"><input type="radio" name="tseCargo" value="DEPUTADO FEDERAL" checked> Deputado Federal</label>
+        <label class="radio"><input type="radio" name="tseCargo" value="DEPUTADO ESTADUAL"> Deputado Estadual</label>
+        <label class="radio"><input type="radio" name="tseCargo" value="GOVERNADOR"> Governador</label>
+        <label class="radio"><input type="radio" name="tseCargo" value="SENADOR"> Senador</label>
+        <span class="tse-gap" aria-hidden="true">|</span>
+        <label class="radio"><input type="radio" name="tseCargo" value="PRESIDENTE"> Presidente</label>
+        <span class="tse-size">arquivo: <b id="tseSize">74,5</b> MB</span>
+      </div>
+    </fieldset>
     <p id="tseBig" class="tse-big" hidden>⚠ O arquivo do Presidente é o conjunto nacional (154 MB) —
     o primeiro carregamento pode demorar conforme a sua conexão.</p>
     <div class="tse-row">
-      <input id="tseNum" class="input" inputmode="numeric" maxlength="6" placeholder="número do candidato (ex.: 1333)">
+      <label class="tse-lbl" for="tseNum">número do candidato</label>
+      <input id="tseNum" class="input" inputmode="numeric" maxlength="6" placeholder="ex.: 1333" aria-describedby="tseStatus">
       <button id="btnTseList" class="btn">Listar candidatos</button>
       <select id="tseSel" class="input" hidden></select>
       <button id="btnTseMap" class="btn primary">Mostrar mapa</button>
     </div>
     <div id="tseStatus" class="tse-status" hidden>
-      <div id="tseStatusText"></div>
+      <div id="tseStatusText" aria-live="polite"></div>
       <div class="tse-bar-wrap"><div id="tseBar" class="tse-bar"></div></div>
       <button id="tseRetry" class="btn" hidden>Tentar novamente</button>
+      <button id="tseCancel" class="btn" hidden>Cancelar</button>
     </div>
   </section>
 
@@ -74,9 +76,9 @@
       Ou comece pelo exemplo:
       <button id="btnSample2" class="btn">1333 — SC (2026)</button>
       <span class="dim"> · </span>ou use os
-      <button id="tseGoDrop" class="link">dados oficiais do TSE (2026)</button>
+      <button id="tseGoDrop" class="link">dados do TSE (2026)</button>
     </div>
-    <div class="err" id="errBox" hidden></div>
+    <div class="err" id="errBox" role="alert" hidden></div>
     <details class="fmt">
       <summary>Formato esperado do JSON</summary>
       <p>O arquivo tem três partes: <code>total</code> (votos somados), <code>mun</code> (código TSE do
@@ -103,11 +105,25 @@
 
   <section id="results" hidden>
     <div id="chips" class="chips"></div>
+    <div id="resultActions" class="result-actions">
+      <button id="btnChange" class="btn">Trocar candidato</button>
+      <button id="btnClear" class="btn">Limpar</button>
+      <span class="ra-spacer"></span>
+      <span id="fileActions" hidden>
+        <button id="btnSvg" class="btn">Baixar SVG</button>
+        <button id="btnJson" class="btn">Baixar JSON</button>
+      </span>
+    </div>
     <div id="warnBox" class="warn" hidden></div>
     <div class="mapwrap">
       <div id="mapBox"></div>
       <div id="hudTitle" class="hud"></div>
       <div id="hudLegend" class="hud"></div>
+      <div class="mapzoom" role="group" aria-label="Controles de zoom do mapa">
+        <button id="zoomIn" class="btn zbtn" aria-label="Aproximar" title="Aproximar">+</button>
+        <button id="zoomOut" class="btn zbtn" aria-label="Afastar" title="Afastar">−</button>
+        <button id="zoomReset" class="btn zbtn" aria-label="Restaurar visão completa" title="Restaurar visão completa">⟲</button>
+      </div>
     </div>
   </section>
 </main>

@@ -34,8 +34,10 @@ body {
 }
 .btn:hover { border-color: var(--line2); background: #1a2432; }
 .btn:active { transform: translateY(1px); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn.primary:hover { background: #e02f3e; }
+.btn.primary { background: #dc2626; border-color: #dc2626; color: #fff; }
+.btn.primary:hover { background: #b91c1c; }
+.btn:focus-visible, .link:focus-visible, .input:focus-visible,
+.radio input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .link {
   appearance: none; border: 0; background: none; color: #fd939c; cursor: pointer;
   font: 600 inherit; padding: 0; text-decoration: underline; text-underline-offset: 3px;
@@ -86,6 +88,17 @@ body {
   padding: 5px 13px; font-size: 12.5px; font-weight: 600;
 }
 .chip .k { color: var(--muted); font-weight: 500; font-size: 11.5px; }
+.chip.metric { border-color: var(--line2); background: rgba(246,59,75,0.07); font-size: 13px; }
+.chip.metric .k { font-size: 12px; }
+.chips-g { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chips-g.metrics { margin-left: 8px; padding-left: 16px; border-left: 1px solid var(--line); }
+.result-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: -6px 0 14px; }
+.ra-spacer { flex: 1; }
+.mapzoom {
+  position: absolute; top: 14px; right: 14px; z-index: 6;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.zbtn { width: 34px; height: 34px; padding: 0; font: 700 15px system-ui, sans-serif; line-height: 1; border-radius: 8px; background: rgba(22,29,39,0.92); }
 .warn {
   background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.35);
   color: #fcd34d; border-radius: 8px; padding: 9px 13px; font-size: 12.5px; margin-bottom: 14px;
@@ -138,6 +151,11 @@ body {
 .radio { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
 .radio input { accent-color: var(--accent); }
 .tse-size { color: var(--muted); font-size: 12px; margin-left: auto; }
+.tse-fieldset { border: 0; margin: 0 0 10px; padding: 0; }
+.tse-legend { color: var(--muted); font-size: 11.5px; font-weight: 600; padding: 0 0 4px; }
+.tse-lbl { color: var(--muted); font-size: 12.5px; }
+.tse-gap { color: var(--line2); font-weight: 700; margin: 0 2px; }
+.tse-status.error .tse-err-detail { color: var(--muted); font-size: 11px; margin-top: 3px; overflow-wrap: anywhere; }
 .tse-big { color: #fcd34d; font-size: 12px; }
 .input {
   background: #0b0f14; border: 1px solid var(--line); border-radius: 8px;
