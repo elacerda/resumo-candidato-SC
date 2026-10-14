@@ -122,7 +122,6 @@ body {
   display: flex; align-items: center; gap: 5px; font-size: 9px; color: var(--muted); margin-top: 4px;
 }
 #hudLegend .d { width: 6px; height: 6px; border-radius: 50%; background: var(--dot); display: inline-block; flex: none; }
-#hudLegend .l3 { font-size: 8.5px; color: var(--muted); margin-top: 4px; line-height: 1.35; }
 /* ---------- tooltip ---------- */
 #tip {
   position: fixed; display: none; z-index: 10; max-width: 300px; pointer-events: none;

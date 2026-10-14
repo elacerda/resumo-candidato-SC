@@ -11,8 +11,9 @@
  *     (PIP independente), identidade estável entre candidatos/cargos
  *     (dados reais do snapshot), unicidade, distribuição uniforme;
  *  4) agregados: votos por seção/município/total consistentes;
- *  5) semântica honesta na UI: legenda/HUD/aria/tooltip/rodapé afirmam que
- *     as posições são ILUSTRATIVAS (o TSE não publica coordenadas).
+ *  5) semântica honesta na UI: aria/tooltip afirmam que as posições são
+ *     ILUSTRATIVAS (o TSE não publica coordenadas); HUD/legenda/rodapé no
+ *     formato original (a pedido).
  *
  * Uso: node test/geo_semantics.js
  */
@@ -356,16 +357,17 @@ console.log('== 5) semântica honesta na UI ==');
   const aria = /aria-label="([^"]*)"/.exec(svg);
   check('aria-label do SVG afirma posição ILUSTRATIVA',
     !!aria && aria[1].includes('ilustrativa'), aria ? aria[1].slice(-110) : 'sem aria');
-  check('legenda afirma posição ilustrativa + choropleth real',
-    els.hudLegend.innerHTML.includes('ilustrativas') && els.hudLegend.innerHTML.includes('dado geográfico real'));
-  check('HUD afirma "posição ilustrativa no município"',
-    els.hudTitle.innerHTML.includes('posição ilustrativa no município'));
+  check('legenda no formato original (1 ponto = 1 seção com voto · raio ∝ votos)',
+    els.hudLegend.innerHTML.includes('1 ponto = 1 seção com voto · raio ∝ votos') &&
+    !els.hudLegend.innerHTML.includes('ilustrativas'));
+  check('HUD no formato original (cada ponto = 1 seção com voto)',
+    els.hudTitle.innerHTML.includes('cada ponto = 1 seção com voto') &&
+    !els.hudTitle.innerHTML.includes('ilustrativa'));
   const appSrc = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
   check('tooltip exibe nota de posição ilustrativa',
     appSrc.includes('tip-note') && /posição ilustrativa dentro do município/.test(appSrc));
   const foot = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-  check('rodapé da página explica a semântica dos pontos',
-    foot.includes('posição ilustrativa') && foot.includes('não publica coordenadas'));
+  check('rodapé removido da página (a pedido)', !/<footer/.test(foot));
   const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
   check('README documenta "Semântica geográfica do mapa"',
     readme.includes('Semântica geográfica do mapa') && readme.includes('dado geográfico real'));

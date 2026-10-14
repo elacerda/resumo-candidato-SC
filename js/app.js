@@ -431,7 +431,7 @@
     const titulo = m.candidato
       ? `${esc(m.candidato)}${m.numero ? ` (${esc(m.numero)})` : ''} — ${esc(m.cargo || 'Candidata/o')} · Santa Catarina`
       : 'Seções com voto · Santa Catarina';
-    const sub = `${esc(m.eleicao ? m.eleicao + ' · ' : '')}${model.totalVotos.toLocaleString('pt-BR')} votos em ${model.nSec.toLocaleString('pt-BR')} seções · ${model.nMun} de ${model.nMunTotal} municípios · 1 ponto = 1 seção com voto (posição ilustrativa no município)`;
+    const sub = `${esc(m.eleicao ? m.eleicao + ' · ' : '')}${model.totalVotos.toLocaleString('pt-BR')} votos em ${model.nSec.toLocaleString('pt-BR')} seções · ${model.nMun} de ${model.nMunTotal} municípios · cada ponto = 1 seção com voto`;
     $('hudTitle').innerHTML = `<div class="t">${titulo}</div><div class="s">${sub}</div>`;
     const sw = Array.from({ length: 8 }, (_, i) => {
       const t = i / 7;
@@ -441,8 +441,7 @@
       `<div class="l1">votos por município:</div>` +
       `<svg width="120" height="9">${sw}</svg>` +
       `<div class="l2"><span>0</span><span style="flex:1"></span><span>${model.maxmun.toLocaleString('pt-BR')}${model.maxMunNome ? ' (' + esc(model.maxMunNome) + ')' : ''}</span></div>` +
-      `<div class="l2"><span class="d"></span><span>1 ponto = 1 seção com voto · raio ∝ votos</span></div>` +
-      `<div class="l3">posições ilustrativas dentro do município (o TSE não publica coordenadas das seções; a cor do município é o dado geográfico real)</div>`;
+      `<div class="l2"><span class="d"></span><span>1 ponto = 1 seção com voto · raio ∝ votos</span></div>`;
   }
   function renderChips() {
     const m = model.meta;
