@@ -1,0 +1,99 @@
+{
+  "source": "pt.wikipedia.org — API action=query&prop=coordinates (coordenadas de página)",
+  "retrieved": "2026-10-14",
+  "note": "Pontos de referência geográfica independentes da malha do repo: cidades de SC de regiões distintas (oeste, norte, sul, leste, serrana). Usados para validar que cada feature da malha está na localização real da cidade/município.",
+  "cities": [
+    {
+      "name": "Florianópolis",
+      "lon": -48.54889,
+      "lat": -27.59694
+    },
+    {
+      "name": "Joinville",
+      "lon": -48.84583,
+      "lat": -26.30389
+    },
+    {
+      "name": "Lages",
+      "lon": -50.32583,
+      "lat": -27.81583
+    },
+    {
+      "name": "Chapecó",
+      "lon": -52.61833,
+      "lat": -27.09639
+    },
+    {
+      "name": "Criciúma",
+      "lon": -49.37,
+      "lat": -28.6778
+    },
+    {
+      "name": "Itajaí",
+      "lon": -48.66194,
+      "lat": -26.90778
+    },
+    {
+      "name": "Blumenau",
+      "lon": -49.0722,
+      "lat": -26.90889
+    },
+    {
+      "name": "São Miguel do Oeste",
+      "lon": -53.51778,
+      "lat": -26.725
+    },
+    {
+      "name": "Balneário Camboriú",
+      "lon": -48.635,
+      "lat": -26.99083
+    },
+    {
+      "name": "Urubici",
+      "lon": -49.59194,
+      "lat": -28.015
+    },
+    {
+      "name": "Brusque",
+      "lon": -48.91778,
+      "lat": -27.09778
+    },
+    {
+      "name": "Guabiruba",
+      "lon": -48.98111,
+      "lat": -27.08583
+    },
+    {
+      "name": "São Francisco do Sul",
+      "lon": -48.63778,
+      "lat": -26.24278
+    },
+    {
+      "name": "Gravatal",
+      "lon": -49.035,
+      "lat": -28.33083
+    },
+    {
+      "name": "Maracajá",
+      "lon": -49.4528,
+      "lat": -28.84694
+    }
+  ],
+  "negative_controls": [
+    {
+      "name": "Cascavel (PR) — norte da divisa SC/PR",
+      "lon": -49.31,
+      "lat": -25.42
+    },
+    {
+      "name": "mar (oeste) fora da divisa SC/PR",
+      "lon": -53.95,
+      "lat": -26.3
+    },
+    {
+      "name": "mar (leste) ao sul de SC",
+      "lon": -47.6,
+      "lat": -28.3
+    }
+  ]
+}

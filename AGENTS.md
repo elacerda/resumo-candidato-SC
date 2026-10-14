@@ -50,16 +50,22 @@ votos, local, end}], candidato?, numero?, cargo?, eleicao?, fonte?}`.
 
 ## Invariantes críticas (não quebrar)
 
-1. **MT19937 bit-idêntico ao CPython** (`core.js`): o ponto de cada seção dentro do
-   município vem de rejeição determinística seedeada pelo ID IBGE do município.
+1. **MT19937 bit-idêntico ao CPython** (`core.js`): a posição de cada seção é um sorteio
+   determinístico e **uniforme** dentro da união dos anéis do município,
+   **seed = `sectionSeed(muni IBGE, zona, seção)`** (FNV-1a little-endian + finalizer
+   Murmur3-32). A IDENTIDADE da seção define o ponto — a mesma seção (município + zona +
+   seção) aparece SEMPRE no mesmo ponto, em qualquer candidato/cargo/dataset.
    - 2º loop de `init_by_array`: multiplicador **1566083941**.
    - `random()` (res53): `(a * 67108864 + b) * (1/9007199254740992)`.
-   - Mudança aqui muda TODOS os pontos do mapa → rode `node test/app_smoke.js` e
-     confira visualmente o exemplo (1333) no navegador.
-2. **Ordem das seções define o mapa**: a ordem dentro de cada município = ordem do arquivo
-   CSV do TSE. O exemplo `data/1333_sc_2026.json` e o snapshot seguem essa ordem; se o TSE
-   republishar o arquivo em outra ordem, regere o exemplo (mesma lógica de `sync/tse_sync.py`)
-   para manter exemplo/CDN/snapshot idênticos.
+   - Os pontos são **ILUSTRATIVOS**: o TSE não publica coordenadas das seções. A UI
+     (legenda/HUD/aria/tooltip/rodapé) deve manter o aviso "posição ilustrativa".
+   - Mudança aqui muda TODOS os pontos do mapa → rode `node test/geo_semantics.js`
+     (inclui valores de referência gerados com CPython).
+2. **A posição do ponto NÃO depende da ordem do CSV**: é função da identidade da seção
+   (muni IBGE + zona + seção). A ordem das seções no dataset continua = ordem do arquivo
+   CSV do TSE (fiel aos dados); o exemplo `data/1333_sc_2026.json` e o snapshot a seguem —
+   se o TSE republishar em outra ordem, regere o exemplo (mesma lógica de `sync/tse_sync.py`),
+   mas o mapa é invariante à ordem.
 3. **CSV do TSE**: latin-1, separador `;`, 26 colunas, campos de texto entre aspas,
    registros de linha única. Colunas usadas: `SG_UF`, `NR_TURNO`, `DS_CARGO`, `NR_VOTAVEL`,
    `NM_VOTAVEL`, `CD_MUNICIPIO`, `NM_MUNICIPIO`, `NR_ZONA`, `NR_SECAO`, `QT_VOTOS`,
@@ -73,12 +79,20 @@ votos, local, end}], candidato?, numero?, cargo?, eleicao?, fonte?}`.
 7. **Mapeamento TSE→IBGE** de municípios: `Core.mapTseToGeo` (código/nome → feature da
    malha). Não inventar outro caminho.
 8. Snapshot: **só SC** em todos os cargos (inclusive Presidente).
+9. **Semântica geográfica honesta**: o choropleth (votos por município) é o dado
+   geográfico real; os pontos são distribuição **ilustrativa** de seções dentro do
+   município (o TSE não publica coordenadas de seções/locais). Nunca redefinir a
+   visualização como se os pontos fossem endereços reais — validado por
+   `test/geo_semantics.js`.
 
 ## Testes (Node, sem dependências)
 
 ```
 node test/app_smoke.js     # app com DOM shim: exemplo 1333 (3397 dots), validação de erro
 node test/snapshot_app.js  # modo snapshot: mapa/lista por número + fallback CDN com "Failed to fetch"
+node test/geo_semantics.js # correção geográfica: join TSE→IBGE (295/295), referências de cidades
+                           # (Wikipedia), identidade/contenção/estabilidade dos pontos, agregados,
+                           # semântica honesta na UI (DOM shim)
 node test/tse_e2e.js       # zip oficial TSE -> parser JS vs dataset publicado (requer /tmp/tse_sc.zip)
 ```
 

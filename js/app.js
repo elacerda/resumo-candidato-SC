@@ -13,7 +13,7 @@
   const esc = t => String(t == null ? '' : t)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-  let geo = null, geoByName = null, feats = null, ringByGeo = null, proj = null;
+  let geo = null, geoByName = null, feats = null, ringsByGeo = null, proj = null;
   let model = null;       // dataset processado
   let rawJson = null;     // objeto original carregado (para exportar)
 
@@ -323,8 +323,8 @@
     const idx = Core.buildGeoIndex(geo);
     feats = idx.feats;
     geoByName = idx.geoByName;
-    ringByGeo = new Map(feats.map(f => [f[0], f[2]]));
-    proj = Core.makeProjector(feats.map(f => f[2]));
+    ringsByGeo = new Map(feats.map(f => [f[0], f[2]]));
+    proj = Core.makeProjector(feats.flatMap(f => f[2]));
   }
 
   // ---------------- modelo (mesma lógica do Python) ----------------
@@ -347,26 +347,32 @@
       if (!munSections.has(g)) munSections.set(g, []);
       munSections.get(g).push(s);
     }
+    // 1 ponto por seção, em posição ILUSTRATIVA e determinística dentro do
+    // polígono do município (identidade da seção = muni IBGE + zona + seção).
+    // O TSE não publica coordenadas das seções — o ponto NÃO é o endereço
+    // real (ver README: "Semântica geográfica do mapa").
     const dots = [];
     for (const g of [...munSections.keys()].sort()) {
-      const ring = ringByGeo.get(g);
+      const rings = ringsByGeo.get(g);
       const sects = munSections.get(g);
-      const pts = Core.placePoints(ring, sects.length, parseInt(g, 10));
-      pts.forEach((p, i) => dots.push({ x: proj.P(p[0], p[1])[0], y: proj.P(p[0], p[1])[1], r: Core.dotR(sects[i].votos), s: sects[i] }));
+      for (const s of sects) {
+        const p = Core.placeSection(rings, parseInt(g, 10), s.zona, s.secao);
+        dots.push({ x: proj.P(p[0], p[1])[0], y: proj.P(p[0], p[1])[1], r: Core.dotR(s.votos), s });
+      }
     }
     const metaByName = new Map();
     for (const [m, v] of Object.entries(ds.mun)) if (tse2geo.has(m)) metaByName.set(tse2geo.get(m), titleCase(v.nome));
     const labels = [];
     for (const [g, v] of munVotes) {
       if (v >= 60) {
-        const [cx, cy] = Core.centroid(ringByGeo.get(g));
+        const [cx, cy] = Core.centroid(Core.biggestRing(ringsByGeo.get(g)));
         const [x, y] = proj.P(cx, cy);
         labels.push({ x, y, nome: metaByName.get(g), v });
       }
     }
     if (labels.length < 1) {
       [...munVotes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).forEach(([g, v]) => {
-        const [cx, cy] = Core.centroid(ringByGeo.get(g));
+        const [cx, cy] = Core.centroid(Core.biggestRing(ringsByGeo.get(g)));
         const [x, y] = proj.P(cx, cy);
         labels.push({ x, y, nome: metaByName.get(g), v });
       });
@@ -389,16 +395,20 @@
     const aria = (m.candidato ? m.candidato + (m.numero ? ' (' + m.numero + ')' : '') + ' — ' : '') +
       (m.cargo || 'seções com voto') + ', Santa Catarina. ' +
       model.totalVotos.toLocaleString('pt-BR') + ' votos em ' + model.nSec.toLocaleString('pt-BR') +
-      ' seções, ' + model.nMun + ' de ' + model.nMunTotal + ' municípios. Cada ponto = 1 seção com voto.';
+      ' seções, ' + model.nMun + ' de ' + model.nMunTotal + ' municípios. Cada ponto = 1 seção com voto; ' +
+      'posições ilustrativas dentro do polígono do município (o TSE não publica coordenadas das seções).';
     const parts = [];
     parts.push(`<svg id="map" viewBox="0 0 ${W2} ${H2}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${esc(aria)}" font-family="system-ui, -apple-system, sans-serif">`);
     parts.push(`<rect x="0" y="0" width="${W2}" height="${H2}" fill="${BG}"/>`);
-    for (const [g, nome, ring] of feats) {
-      const d = 'M ' + Core.decimate(ring, 3).map(p => proj.P(p[0], p[1]).join(' ')).join(' L ') + ' Z';
+    for (const [g, nome, rings] of feats) {
       const fo = Core.fillFor(model.munVotes.get(g) || 0, model.maxmun);
-      parts.push(fo === null
-        ? `<path d="${d}" fill="${FILL0}" stroke="${STROKE0}" stroke-width="0.6" vector-effect="non-scaling-stroke"/>`
-        : `<path d="${d}" fill="${ACCENT}" fill-opacity="${fo}" stroke="${STROKE1}" stroke-width="0.6" vector-effect="non-scaling-stroke"/>`);
+      for (const ring of rings) {
+        const pts = ring.length > 12 ? Core.decimate(ring, 3) : ring;
+        const d = 'M ' + pts.map(p => proj.P(p[0], p[1]).join(' ')).join(' L ') + ' Z';
+        parts.push(fo === null
+          ? `<path d="${d}" fill="${FILL0}" stroke="${STROKE0}" stroke-width="0.6" vector-effect="non-scaling-stroke"/>`
+          : `<path d="${d}" fill="${ACCENT}" fill-opacity="${fo}" stroke="${STROKE1}" stroke-width="0.6" vector-effect="non-scaling-stroke"/>`);
+      }
     }
     model.dots.forEach((dt, i) => {
       const title = withTitles
@@ -421,7 +431,7 @@
     const titulo = m.candidato
       ? `${esc(m.candidato)}${m.numero ? ` (${esc(m.numero)})` : ''} — ${esc(m.cargo || 'Candidata/o')} · Santa Catarina`
       : 'Seções com voto · Santa Catarina';
-    const sub = `${esc(m.eleicao ? m.eleicao + ' · ' : '')}${model.totalVotos.toLocaleString('pt-BR')} votos em ${model.nSec.toLocaleString('pt-BR')} seções · ${model.nMun} de ${model.nMunTotal} municípios · cada ponto = 1 seção com voto`;
+    const sub = `${esc(m.eleicao ? m.eleicao + ' · ' : '')}${model.totalVotos.toLocaleString('pt-BR')} votos em ${model.nSec.toLocaleString('pt-BR')} seções · ${model.nMun} de ${model.nMunTotal} municípios · 1 ponto = 1 seção com voto (posição ilustrativa no município)`;
     $('hudTitle').innerHTML = `<div class="t">${titulo}</div><div class="s">${sub}</div>`;
     const sw = Array.from({ length: 8 }, (_, i) => {
       const t = i / 7;
@@ -431,7 +441,8 @@
       `<div class="l1">votos por município:</div>` +
       `<svg width="120" height="9">${sw}</svg>` +
       `<div class="l2"><span>0</span><span style="flex:1"></span><span>${model.maxmun.toLocaleString('pt-BR')}${model.maxMunNome ? ' (' + esc(model.maxMunNome) + ')' : ''}</span></div>` +
-      `<div class="l2"><span class="d"></span><span>1 ponto = 1 seção com voto · raio ∝ votos</span></div>`;
+      `<div class="l2"><span class="d"></span><span>1 ponto = 1 seção com voto · raio ∝ votos</span></div>` +
+      `<div class="l3">posições ilustrativas dentro do município (o TSE não publica coordenadas das seções; a cor do município é o dado geográfico real)</div>`;
   }
   function renderChips() {
     const m = model.meta;
@@ -553,6 +564,7 @@
         `<div class="h">Seção ${esc(s.secao)} · Zona ${esc(s.zona)}</div>` +
         `<div class="muni">${esc(s.muniNome)}</div>` +
         `<div class="m">${esc(s.local)}</div>${end}` +
+        `<div class="tip-note">posição ilustrativa dentro do município (o TSE não publica coordenadas)</div>` +
         `<div class="v">${s.votos} ${s.votos === 1 ? 'voto' : 'votos'}</div>`;
       tip.style.display = 'block';
       const bw = tip.offsetWidth, bh = tip.offsetHeight;

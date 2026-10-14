@@ -36,7 +36,7 @@ Dados oficiais do TSE na granularidade de seção (o TSE não expõe API por can
 - Cargos: Deputado Federal, Deputado Estadual, Governador, Senador (zip SC) e Presidente (zip BR, filtrado para UF=SC). Só 1º turno.
 
 **Invariantes (técnicas, não quebrar)**
-- Posicionamento dos pontos: MT19937 **bit-idêntico ao CPython** (rejeição determinística seedeada pelo ID IBGE do município) — a mesma seção sempre cai no mesmo ponto.
+- Posicionamento dos pontos: **ilustrativo** — sorteio determinístico e uniforme dentro do polígono do município, MT19937 **bit-idêntico ao CPython**, seed = identidade da seção (muni IBGE + zona + seção); a mesma seção sempre cai no mesmo ponto, em qualquer candidato/cargo. O TSE não publica coordenadas das seções — a UI deve manter a distinção (choropleth = dado geográfico real).
 - Ordem das seções dentro de cada município = ordem do CSV oficial do TSE; exemplo, snapshot e CDN devem ser idênticos.
 - Branco/nulo excluídos: números `0, 1, 95, 96, 99` e nomes `VOTO BRANCO/NULO` (regex).
 - CSV do TSE: latin-1, separador `;`, 26 colunas, registros de linha única.
@@ -70,6 +70,6 @@ Dados oficiais do TSE na granularidade de seção (o TSE não expõe API por can
 
 1. **O dado não sai da máquina** — sem backend, sem upload; a consulta oficial é feita direto do navegador (CDN com CORS) ou no snapshot do próprio repositório.
 2. **TSE é a única verdade** — dados oficiais exclusivamente; branco/nulo sempre excluído; sem fontes de terceiros.
-3. **Determinismo** — mesma seção, mesmo ponto, sempre (MT19937 ≡ CPython); mesma ordem do CSV; exemplo/snapshot/CDN idênticos.
+3. **Determinismo** — mesma seção, mesmo ponto, sempre (seed = identidade da seção; MT19937 ≡ CPython); ordem do CSV preservada nos datasets; exemplo/snapshot/CDN idênticos.
 4. **Zero dependência** — arquivos estáticos + fflate embutido; nada de npm/bundler.
 5. **Vermelho, nunca azul** — identidade visual comprometida com vermelho como cor de destaque.

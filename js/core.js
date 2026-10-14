@@ -1,6 +1,9 @@
 /* Resumo Candidato — SC: núcleo de geometria/projeção.
- * Porta 1:1 do gerador Python original (fora do repo), incluindo o Mersenne
- * Twister do Python (random.Random) para posições idênticas dos pontos. */
+ * MT19937 bit-idêntico ao CPython (random.Random). Posicionamento das
+ * seções: sorteio determinístico e uniforme DENTRO do polígono do
+ * município, seedeado pela IDENTIDADE da seção (município + zona +
+ * seção). Os pontos são ILUSTRATIVOS: o TSE não publica coordenadas
+ * das seções — ver README ("Semântica geográfica do mapa"). */
 (function (root) {
   'use strict';
 
@@ -61,15 +64,32 @@
   };
   MT19937.prototype.uniform = function (a, b) { return a + (b - a) * this.random(); };
 
-  // ---- geometria ----
-  function ringOf(geom) {
-    if (geom.type === 'Polygon') return geom.coordinates[0];
-    const rings = geom.coordinates.map(p => p[0]);
+  // ---- geometria (WGS84, anéis = [[lon, lat], ...]) ----
+  /** Todos os anéis exteriores de uma feature (Polygon ou MultiPolygon).
+   *
+   * @param {{type: string, coordinates: any}} geom geometria GeoJSON.
+   * @returns {number[][][]} lista de anéis exteriores (lon, lat).
+   */
+  function ringsOf(geom) {
+    if (geom.type === 'Polygon') return [geom.coordinates[0]];
+    return geom.coordinates.map(p => p[0]);
+  }
+  /** Maior anel (por nº de vértices) — usado p/ posicionar rótulos.
+   *
+   * @param {number[][][]} rings anéis exteriores.
+   * @returns {number[][]} anel maior.
+   */
+  function biggestRing(rings) {
     return rings.reduce((best, r) => (r.length > best.length ? r : best));
   }
-  function bbox(ring) {
+  /** Bounding box da união dos anéis.
+   *
+   * @param {number[][][]} rings anéis exteriores.
+   * @returns {[number, number, number, number]} [minLon, minLat, maxLon, maxLat].
+   */
+  function bboxAll(rings) {
     let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
-    for (const p of ring) {
+    for (const ring of rings) for (const p of ring) {
       if (p[0] < minx) minx = p[0];
       if (p[1] < miny) miny = p[1];
       if (p[0] > maxx) maxx = p[0];
@@ -77,15 +97,25 @@
     }
     return [minx, miny, maxx, maxy];
   }
-  function inPoly(x, y, ring) {
-    let inside = false;
-    let j = ring.length - 1;
-    for (let i = 0; i < ring.length; i++) {
-      const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
-      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
-      j = i;
+  /** Point-in-polygon (ray casting, paridade) na UNIÃO dos anéis.
+   *
+   * @param {number[][][]} rings anéis exteriores.
+   * @param {number} x longitude (graus).
+   * @param {number} y latitude (graus).
+   * @returns {boolean} true se (x, y) está em algum anel.
+   */
+  function inAnyPoly(rings, x, y) {
+    for (const ring of rings) {
+      let inside = false;
+      let j = ring.length - 1;
+      for (let i = 0; i < ring.length; i++) {
+        const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+        if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+        j = i;
+      }
+      if (inside) return true;
     }
-    return inside;
+    return false;
   }
   function decimate(ring, step) {
     const pts = [];
@@ -93,9 +123,27 @@
     if (pts[0] !== ring[ring.length - 1]) pts.push(ring[ring.length - 1]);
     return pts;
   }
+  /** Média dos vértices (amostrados a cada 5) de um anel — aproximação
+   * do centro, p/ rótulos de município.
+   *
+   * @param {number[][]} ring anel (lon, lat).
+   * @returns {[number, number]} [lon, lat].
+   */
   function centroid(ring) {
     const rs = [];
     for (let i = 0; i < ring.length; i += 5) rs.push(ring[i]);
+    let sx = 0, sy = 0;
+    for (const p of rs) { sx += p[0]; sy += p[1]; }
+    return [sx / rs.length, sy / rs.length];
+  }
+  /** Média dos vértices de todos os anéis (fallback de posicionamento).
+   *
+   * @param {number[][][]} rings anéis exteriores.
+   * @returns {[number, number]} [lon, lat].
+   */
+  function centroidAll(rings) {
+    const rs = [];
+    for (const ring of rings) for (let i = 0; i < ring.length; i += 5) rs.push(ring[i]);
     let sx = 0, sy = 0;
     for (const p of rs) { sx += p[0]; sy += p[1]; }
     return [sx / rs.length, sy / rs.length];
@@ -123,34 +171,67 @@
     };
   }
 
-  // n pontos determinísticos dentro do polígono (grade + jitter + rejeição)
-  function placePoints(ring, n, seed) {
-    const rng = new MT19937(seed);
-    const [bx0, by0, bx1, by1] = bbox(ring);
-    const pts = [];
-    if (n > 0 && (bx1 - bx0) > 0 && (by1 - by0) > 0) {
-      const cols = Math.max(1, Math.ceil(Math.sqrt(n * (bx1 - bx0) / (by1 - by0))));
-      const rows = Math.max(1, Math.ceil(n / cols));
-      const cw = (bx1 - bx0) / cols, ch = (by1 - by0) / rows;
-      outer:
-      for (let ry = 0; ry < rows; ry++) {
-        for (let rx = 0; rx < cols; rx++) {
-          if (pts.length >= n) break outer;
-          const lon = bx0 + (rx + 0.5) * cw + rng.uniform(-0.45, 0.45) * cw;
-          const lat = by0 + (ry + 0.5) * ch + rng.uniform(-0.45, 0.45) * ch;
-          if (inPoly(lon, lat, ring)) pts.push([lon, lat]);
-        }
+  // ---- posicionamento das seções (ilustrativo, por identidade) ----
+  // O TSE NÃO publica coordenadas das seções/locais de votação. A posição
+  // de cada seção é, portanto, um ponto ilustrativo DENTRO do polígono do
+  // município (WGS84), sorteado de forma determinística e uniforme a
+  // partir da identidade da seção (município IBGE + zona + seção).
+  // Consequência: a mesma seção aparece SEMPRE no mesmo ponto, em qualquer
+  // candidato, cargo ou dataset — mas o ponto NÃO é o endereço real da
+  // seção (o endereço real só existe como texto nos dados do TSE).
+  /**
+   * Semente determinística (32 bits) da identidade da seção.
+   *
+   * FNV-1a sobre os bytes little-endian de (muniId, zona, secao), com o
+   * finalizer do Murmur3-32. Somente aritmética inteira de 32 bits
+   * (>>> 0, Math.imul) — determinístico em qualquer motor JS.
+   *
+   * @param {number} muniId código IBGE do município (ex.: 4209102).
+   * @param {number} zona   zona eleitoral (inteiro >= 0).
+   * @param {number} secao  seção eleitoral (inteiro >= 0).
+   * @returns {number} semente 32-bit.
+   */
+  function sectionSeed(muniId, zona, secao) {
+    let h = 0x811c9dc5;
+    const push = u => {
+      u >>>= 0;
+      for (let i = 0; i < 4; i++) {
+        h ^= (u >>> (i * 8)) & 0xff;
+        h = Math.imul(h, 0x01000193) >>> 0;
       }
-      let tries = 0;
-      while (pts.length < n && tries < n * 40) {
-        tries++;
-        const lon = rng.uniform(bx0, bx1), lat = rng.uniform(by0, by1);
-        if (inPoly(lon, lat, ring)) pts.push([lon, lat]);
-      }
-      const cx = (bx0 + bx1) / 2, cy = (by0 + by1) / 2;
-      while (pts.length < n) pts.push([cx, cy]);
+    };
+    push(muniId); push(zona); push(secao);
+    h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b) >>> 0;
+    h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35) >>> 0;
+    h ^= h >>> 16;
+    return h >>> 0;
+  }
+  /**
+   * Posição (lon, lat) WGS84 de uma seção dentro do município.
+   *
+   * Sorteio determinístico e uniforme: MT19937 (bit-idêntico ao CPython)
+   * seedeado por `sectionSeed(muniId, zona, secao)`, com rejeição sobre o
+   * bbox da união dos anéis (até 64 tentativas). Fallback determinístico:
+   * média dos vértices dos anéis; se ainda fora, centro do bbox.
+   * A distribuição condicionada ao polígono é uniforme em área.
+   *
+   * @param {number[][][]} rings    anéis exteriores do município (lon, lat).
+   * @param {number}        muniId  código IBGE do município.
+   * @param {string|number} zona    zona eleitoral.
+   * @param {string|number} secao   seção eleitoral.
+   * @returns {[number, number]} [lon, lat] WGS84 dentro do município.
+   */
+  function placeSection(rings, muniId, zona, secao) {
+    const [bx0, by0, bx1, by1] = bboxAll(rings);
+    if (!(bx1 > bx0 && by1 > by0)) return [(bx0 + bx1) / 2, (by0 + by1) / 2];
+    const rng = new MT19937(sectionSeed(muniId, zona >>> 0 | 0, secao >>> 0 | 0));
+    for (let t = 0; t < 64; t++) {
+      const lon = rng.uniform(bx0, bx1), lat = rng.uniform(by0, by1);
+      if (inAnyPoly(rings, lon, lat)) return [lon, lat];
     }
-    return pts;
+    const c = centroidAll(rings);
+    if (inAnyPoly(rings, c[0], c[1])) return c;
+    return [(bx0 + bx1) / 2, (by0 + by1) / 2];
   }
 
   function dotR(v) { return Math.round((1.3 + 0.55 * Math.min(v - 1, 4)) * 100) / 100; }
@@ -161,7 +242,15 @@
     return Math.round((0.12 + 0.73 * t) * 1000) / 1000;
   }
 
-  // índice nome normalizado -> [códigos IBGE], na ordem das features
+  /**
+   * Índice da malha: uma entrada por feature [código IBGE, nome, anéis].
+   *
+   * Mantém TODOS os anéis exteriores (MultiPolygon: ilhas/penínsulas
+   * inclusas) e o mapa nome normalizado -> [códigos IBGE].
+   *
+   * @param {{features: any[]}} geo FeatureCollection (WGS84).
+   * @returns {{feats: [string, string, number[][][]][], geoByName: Map<string, string[]>}}
+   */
   function buildGeoIndex(geo) {
     const feats = [];
     const geoByName = new Map();
@@ -169,7 +258,7 @@
       const p = f.properties || {};
       const muni = String(p.id != null ? p.id : '');
       const nome = p.name || p.description || '';
-      feats.push([muni, nome, ringOf(f.geometry)]);
+      feats.push([muni, nome, ringsOf(f.geometry)]);
       if (!geoByName.has(norm(nome))) geoByName.set(norm(nome), []);
       geoByName.get(norm(nome)).push(muni);
     }
@@ -229,7 +318,7 @@
     return { ok: true, meta, mun: obj.mun, sections, total: Number(obj.total) || sections.reduce((a, s) => a + s.votos, 0) };
   }
 
-  const Core = { norm, MT19937, ringOf, bbox, inPoly, decimate, centroid, makeProjector, placePoints, dotR, fillFor, buildGeoIndex, mapTseToGeo, parseDataset };
+  const Core = { norm, MT19937, ringsOf, biggestRing, bboxAll, inAnyPoly, decimate, centroid, centroidAll, makeProjector, sectionSeed, placeSection, dotR, fillFor, buildGeoIndex, mapTseToGeo, parseDataset };
   if (typeof module !== 'undefined' && module.exports) module.exports = Core;
   else root.ResumoCore = Core;
 })(typeof self !== 'undefined' ? self : globalThis);

@@ -44,10 +44,11 @@ Interação do mapa: scroll = zoom (centrado no cursor) · arrastar = mover · d
 
 ## Como funciona
 
-- `js/core.js` — núcleo de geometria (mesma lógica do gerador Python original): projeção
-  equiretangular, encaixe de pontos dentro dos polígonos por grade determinística com
-  rejeição (Mersenne Twister idêntico ao do Python — a mesma seção sempre cai no mesmo
-  ponto) e choropleth por município (escala log).
+- `js/core.js` — núcleo de geometria: projeção equiretangular, choropleth por município
+  (escala log) e posicionamento das seções: cada seção recebe um ponto **ilustrativo**,
+  sorteado de forma determinística e uniforme dentro do polígono do município (Mersenne
+  Twister bit-idêntico ao do CPython, seedeado pela identidade da seção — município IBGE +
+  zona + seção; a mesma seção sempre cai no mesmo ponto, em qualquer candidato/cargo).
 - `js/tse.js` — parser em stream do CSV oficial do TSE (`votacao_secao_<ANO>_<UF|BR>.csv`,
   latin-1, `;`): lista de candidatos por cargo e dataset por candidato (fallback do CDN).
 - `sync/tse_sync.py` — gera o snapshot (`data/tse_2026/`): baixa os zips oficiais do TSE,
@@ -61,6 +62,31 @@ Interação do mapa: scroll = zoom (centrado no cursor) · arrastar = mover · d
 - `js/fflate.js` — [fflate](https://github.com/101arrowz/fflate) (MIT), descompactação zip no navegador.
 - `data/geo_sc_municipios.json` — malha municipal de SC (IBGE, espelho tbrugz/geodata-br).
 - `data/1333_sc_2026.json` — dataset de exemplo (extração TSE).
+
+## Semântica geográfica do mapa
+
+O mapa tem duas camadas com significados geográficos **diferentes**:
+
+1. **Choropleth por município (dado geográfico real)** — a cor de cada município é
+   proporcional (escala log) aos votos totais do candidato **nesse município**. É a única
+   camada com localização geográfica real, na granularidade que os dados oficiais suportam.
+2. **Pontos (distribuição ilustrativa de seções)** — 1 ponto = 1 seção de votação com voto
+   do candidato (raio ∝ votos na seção). O TSE **não publica coordenadas** das seções nem
+   dos locais de votação; o arquivo oficial traz apenas o **nome** do local e o
+   **endereço** em texto (exibidos no tooltip). Por isso a posição de cada ponto é
+   *ilustrativa*: um sorteio determinístico e uniforme dentro do polígono do município
+   (WGS84), seedeado pela identidade da seção (código IBGE do município + zona + seção).
+   Consequências:
+   - a mesma seção (município + zona + seção) aparece sempre no mesmo ponto, em qualquer
+     candidato, cargo ou dataset, e em execuções repetidas;
+   - o ponto **não** está no endereço real da seção — não interprete a posição dentro do
+     município como localização do local de votação;
+   - a *densidade* de pontos por município é real (1 seção = 1 ponto), mas a
+     *distribuição espacial* dentro do município é uniforme.
+
+Não há fonte pública oficial (TSE/IBGE) com coordenadas de seções/locais em lote, e o app
+não inventa coordenadas nem usa centroides silenciosamente — por isso a diferenciação
+explícita na UI (legenda, tooltip, rótulo do SVG e rodapé).
 
 ## Fonte dos dados do TSE
 
@@ -81,5 +107,7 @@ permitindo consulta instantânea por número no próprio GitHub Pages.
 ```
 node test/app_smoke.js    # smoke do app com DOM shim (exemplo 1333)
 node test/snapshot_app.js # app no modo snapshot: mapa/lista por número + fallback CDN com falha de rede
+node test/geo_semantics.js# correção geográfica: join TSE→IBGE, referências de cidades, identidade/
+                          # contenção/estabilidade dos pontos, agregados e semântica honesta na UI
 node test/tse_e2e.js      # zip oficial TSE -> parser JS vs dataset 1333 publicado (requer /tmp/tse_sc.zip)
 ```
