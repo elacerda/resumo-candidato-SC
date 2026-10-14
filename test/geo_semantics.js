@@ -357,9 +357,10 @@ console.log('== 5) semântica honesta na UI ==');
   const aria = /aria-label="([^"]*)"/.exec(svg);
   check('aria-label do SVG afirma posição ILUSTRATIVA',
     !!aria && aria[1].includes('ilustrativa'), aria ? aria[1].slice(-110) : 'sem aria');
-  check('legenda no formato original (1 ponto = 1 seção com voto · raio ∝ votos)',
-    els.hudLegend.innerHTML.includes('1 ponto = 1 seção com voto · raio ∝ votos') &&
-    !els.hudLegend.innerHTML.includes('ilustrativas'));
+  check('legenda no formato antigo (0 ● 1 seção … maxmun)',
+    els.hudLegend.innerHTML.includes('>1 seção<') &&
+    els.hudLegend.innerHTML.includes('1.745 (Florianópolis)') &&
+    !els.hudLegend.innerHTML.includes('1 ponto = 1 seção'));
   check('HUD no formato original (cada ponto = 1 seção com voto)',
     els.hudTitle.innerHTML.includes('cada ponto = 1 seção com voto') &&
     !els.hudTitle.innerHTML.includes('ilustrativa'));

@@ -440,8 +440,7 @@
     $('hudLegend').innerHTML =
       `<div class="l1">votos por município:</div>` +
       `<svg width="120" height="9">${sw}</svg>` +
-      `<div class="l2"><span>0</span><span style="flex:1"></span><span>${model.maxmun.toLocaleString('pt-BR')}${model.maxMunNome ? ' (' + esc(model.maxMunNome) + ')' : ''}</span></div>` +
-      `<div class="l2"><span class="d"></span><span>1 ponto = 1 seção com voto · raio ∝ votos</span></div>`;
+      `<div class="l2"><span>0</span><span class="d"></span><span>1 seção</span><span style="flex:1"></span><span>${model.maxmun.toLocaleString('pt-BR')}${model.maxMunNome ? ' (' + esc(model.maxMunNome) + ')' : ''}</span></div>`;
   }
   function renderChips() {
     const m = model.meta;
