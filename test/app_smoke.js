@@ -56,19 +56,36 @@ if (!init) { console.error('FAIL: DOMContentLoaded não registrado'); process.ex
   await els.btnSample.listeners.click[0]();   // carrega o exemplo 1333
   const svgHtml = els.mapBox.innerHTML;
   const nDots = (svgHtml.match(/class="dot"/g) || []).length;
+  const nIll = (svgHtml.match(/class="dot dot-ill"/g) || []).length;
   const checks = [
-    ['mapa renderizado (3397 dots, modo ilustrativo sem catálogo)', nDots === 3397, `achou ${nDots}`],
-    ['aria declara ILUSTRATIVAS', /aria-label="[^"]*ILUSTRATIVAS/.test(svgHtml), ''],
+    ['sem catálogo: sem marcadores por padrão (estado indisponível)', nDots === 0 && nIll === 0, `achou ${nDots}/${nIll}`],
+    ['aria declara georreferenciamento indisponível', /aria-label="[^"]*indisponível/.test(svgHtml), ''],
     ['título HUD', els.hudTitle.innerHTML.includes('Ju Andózio (1333)') && els.hudTitle.innerHTML.includes('Deputada Federal'), ''],
     ['subtítulo com totais', els.hudTitle.innerHTML.includes('4.876 votos em 3.397 seções'), ''],
+    ['HUD declara indisponível (sem marcadores)', els.hudTitle.innerHTML.includes('georreferenciamento indisponível'), ''],
     ['chips', els.chips.innerHTML.includes('4.876') && els.chips.innerHTML.includes('224 de 295'), ''],
     ['legenda', els.hudLegend.innerHTML.includes('1.745 (Florianópolis)'), ''],
-    ['aviso: posições ILUSTRATIVAS (sem catálogo)', !els.warnBox.hidden && /ILUSTRATIVAS/.test(els.warnBox.innerHTML), els.warnBox.innerHTML.slice(0, 80)],
+    ['aviso: catálogo indisponível (sem ponto sintético)', !els.warnBox.hidden && /indisponível/.test(els.warnBox.innerHTML), els.warnBox.innerHTML.slice(0, 80)],
+    ['botão modo ilustrativo visível (escolha explícita)', els.btnIllus.hidden === false && els.btnIllus.textContent.includes('Modo ilustrativo (sem catálogo)'), els.btnIllus.textContent],
     ['dropzone oculta', els.dropZone.classList.contains('hidden') === true, ''],
     ['fileActions visível', els.fileActions.hidden === false, '']
   ];
   let ok = true;
   for (const [name, pass, extra] of checks) {
+    console.log(pass ? '  ✓' : '  ✗', name, extra ? `(${extra})` : '');
+    if (!pass) ok = false;
+  }
+  // modo ilustrativo por escolha explícita: 3397 círculos ocos, modo declarado
+  await els.btnIllus.listeners.click[0]();
+  const svgIll = els.mapBox.innerHTML;
+  const nIll2 = (svgIll.match(/class="dot dot-ill"/g) || []).length;
+  const c2 = [
+    ['modo ilustrativo: 3397 pontos (círculos ocos)', nIll2 === 3397, `achou ${nIll2}`],
+    ['modo ilustrativo: aria declara ILUSTRATIVAS', /aria-label="[^"]*ILUSTRATIVAS/.test(svgIll), ''],
+    ['modo ilustrativo: HUD declara posições ilustrativas', els.hudTitle.innerHTML.includes('posições ilustrativas'), ''],
+    ['modo ilustrativo: botão ATIVO', els.btnIllus.hidden === false && els.btnIllus.textContent.includes('ATIVO'), els.btnIllus.textContent]
+  ];
+  for (const [name, pass, extra] of c2) {
     console.log(pass ? '  ✓' : '  ✗', name, extra ? `(${extra})` : '');
     if (!pass) ok = false;
   }

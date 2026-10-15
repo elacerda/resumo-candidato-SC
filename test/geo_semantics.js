@@ -351,22 +351,38 @@ console.log('== 5) semântica honesta na UI ==');
   check('app carregado (DOMContentLoaded)', !!init);
   await init();
   await els.btnSample.listeners.click[0]();
+  const svg0 = els.mapBox.innerHTML;
+  const nDots0 = (svg0.match(/class="dot"/g) || []).length;
+  const nIll0 = (svg0.match(/class="dot dot-ill"/g) || []).length;
+  const aria0 = /aria-label="([^"]*)"/.exec(svg0);
+  check('sem catálogo: nenhum marcador por padrão (estado indisponível)',
+    nDots0 === 0 && nIll0 === 0, `${nDots0}/${nIll0}`);
+  check('sem catálogo: aria declara georreferenciamento indisponível',
+    !!aria0 && /indisponível/.test(aria0[1]), aria0 ? aria0[1].slice(-110) : 'sem aria');
+  check('sem catálogo: HUD declara indisponível',
+    els.hudTitle.innerHTML.includes('georreferenciamento indisponível'), els.hudTitle.innerHTML.slice(0, 120));
+  check('sem catálogo: aviso explícito',
+    !els.warnBox.hidden && /indisponível/.test(els.warnBox.innerHTML), els.warnBox.innerHTML.slice(0, 80));
+  check('sem catálogo: botão modo ilustrativo visível',
+    els.btnIllus.hidden === false && /Modo ilustrativo/.test(els.btnIllus.textContent), els.btnIllus.textContent);
+  // escolha explícita do modo ilustrativo
+  await els.btnIllus.listeners.click[0]();
   const svg = els.mapBox.innerHTML;
-  const nDots = (svg.match(/class="dot"/g) || []).length;
-  check('exemplo renderizado (3397 dots)', nDots === 3397, `${nDots}`);
+  const nDots = (svg.match(/class="dot dot-ill"/g) || []).length;
+  check('modo ilustrativo (escolha explícita): 3397 pontos', nDots === 3397, `${nDots}`);
   const aria = /aria-label="([^"]*)"/.exec(svg);
-  check('aria-label do SVG afirma posição ILUSTRATIVA',
+  check('modo ilustrativo: aria-label afirma posição ILUSTRATIVA',
     !!aria && /ilustrativ/i.test(aria[1]), aria ? aria[1].slice(-110) : 'sem aria');
   check('legenda no formato antigo (0 ● 1 seção … maxmun)',
     els.hudLegend.innerHTML.includes('>1 seção<') &&
     els.hudLegend.innerHTML.includes('1.745 (Florianópolis)') &&
     !els.hudLegend.innerHTML.includes('1 ponto = 1 seção'));
-  check('HUD declara posições ilustrativas (sem catálogo)',
+  check('modo ilustrativo: HUD declara posições ilustrativas',
     els.hudTitle.innerHTML.includes('posições ilustrativas') &&
     !/coordenada verificada/i.test(els.hudTitle.innerHTML));
   const appSrc = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
   check('tooltip exibe nota de posição ilustrativa',
-    appSrc.includes('tip-note') && /posição ilustrativa dentro do município/.test(appSrc));
+    appSrc.includes('tip-note') && /posição ILUSTRATIVA — sem coordenada verificada/.test(appSrc));
   const foot = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   check('rodapé removido da página (a pedido)', !/<footer/.test(foot));
   const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');

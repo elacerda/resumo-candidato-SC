@@ -35,6 +35,28 @@ const km = (lon1, lat1, lon2, lat2) => {
   const kx = Math.cos(((lat1 + lat2) / 2) * Math.PI / 180);
   return Math.hypot((lon1 - lon2) * kx * 111.32, (lat1 - lat2) * 110.57);
 };
+// distância exata (km) do ponto ao segmento — aproximação planar local
+// (mesma convenção de sync/geo_ref.py); amostragem de vértices
+// superestima a distância em segmentos longos (ex.: fronteira
+// Indaial/Timbó, 3,25 km amostrado vs 6 m reais)
+const kmPtSeg = (px, py, ax, ay, bx, by) => {
+  const kx = Math.cos(((py + ay + by) / 3) * Math.PI / 180) * 111.32;
+  const ky = 110.57;
+  const axp = (ax - px) * kx, ayp = (ay - py) * ky;
+  const bxp = (bx - px) * kx, byp = (by - py) * ky;
+  const vx = bxp - axp, vy = byp - ayp;
+  const v2 = vx * vx + vy * vy;
+  const t = v2 === 0 ? 0 : Math.max(0, Math.min(1, ((-axp) * vx + (-ayp) * vy) / v2));
+  return Math.hypot(axp + t * vx, ayp + t * vy);
+};
+const kmRing = (x, y, ring) => {
+  let d = Infinity;
+  for (let i = 0; i < ring.length - 1; i++) {
+    const dd = kmPtSeg(x, y, ring[i][0], ring[i][1], ring[i + 1][0], ring[i + 1][1]);
+    if (dd < d) d = dd;
+  }
+  return d;
+};
 
 // PIP independente (winding number)
 function pipWinding(ring, x, y) {
@@ -95,10 +117,10 @@ console.log('== 3) contenção no município (PIP independente) ==');
     const rings = ringsByGeo.get(l[2]) || [];
     const [lon, lat] = l[8];
     if (inFeature(rings, lon, lat)) continue;
-    // distância mínima amostrada ao anel
+    // distância mínima exata (ponto-segmento) aos anéis
     let d = Infinity;
-    for (const r of rings) for (let i = 0; i < r.length; i += 3) {
-      const dd = km(lon, lat, r[i][0], r[i][1]);
+    for (const r of rings) {
+      const dd = kmRing(lon, lat, r);
       if (dd < d) d = dd;
     }
     if (l[12] === 'edge' && d <= 0.5) edgeOk++;
@@ -284,9 +306,15 @@ console.log('== 8) spot-checks: re-derivação independente da fonte ==');
         inFeature(ringsByGeo.get(L[2]) || [], pub[0], pub[1]) || L[12] === 'edge');
     }
     check('spot-checks: >= 10 verificações independentes (TSE -> catálogo)', n >= 10, String(n));
-    // prisões: TSE sem coordenada — se resolvido, ref OSM deve bater
+    // prisões: TSE sem coordenada — se resolvido, ref OSM deve bater OU
+    // revisão manual auditável (sync/geo_overrides.json): coord publicada
+    // == coord do manifesto (veredito 'corrigir'), com evidência em obs.
     const osmPath = path.join(ROOT, 'cache/osm_sc_facilities.json');
     const osmFeats = fs.existsSync(osmPath) ? JSON.parse(fs.readFileSync(osmPath, 'utf8')) : [];
+    const ovrPath = path.join(ROOT, 'sync/geo_overrides.json');
+    const ovr = JSON.parse(fs.readFileSync(ovrPath, 'utf8'));
+    const ovrBy = new Map(ovr.overrides.map(o =>
+      [o.local.mun_tse + '/' + o.local.zona + '/' + o.local.local_code, o]));
     for (const pr of spot.prisons) {
       const L = rowFor(pr.muni, pr.zona, pr.local_code);
       if (!L) { check('prisão ' + pr.city + ': local no catálogo', false, 'ausente'); continue; }
@@ -295,14 +323,68 @@ console.log('== 8) spot-checks: re-derivação independente da fonte ==');
           L[12] === 'pendente' || L[12] === 'ambiguo', L[12]);
         continue;
       }
-      check('prisão ' + pr.city + ': fonte OSM (TSE sem coord)', String(L[9]).includes('OSM'), String(L[9]));
+      const isOvr = String(L[9]).includes('revisão manual');
+      check('prisão ' + pr.city + ': fonte OSM ou revisão manual (TSE sem coord)',
+        String(L[9]).includes('OSM') || isOvr, String(L[9]));
+      if (isOvr) {
+        const o = ovrBy.get(pr.muni + '/' + pr.zona + '/' + pr.local_code);
+        check('prisão ' + pr.city + ': entrada no manifesto (corrigir)',
+          !!o && o.veredito === 'corrigir', o ? o.veredito : 'ausente');
+        check('prisão ' + pr.city + ': coord == manifesto',
+          !!o && Math.abs(o.coord[0] - L[8][0]) <= 1.5e-6 && Math.abs(o.coord[1] - L[8][1]) <= 1.5e-6,
+          JSON.stringify(L[8]));
+        check('prisão ' + pr.city + ': obs documenta evidência + revisão datada',
+          L[15].some(x => /evidência:/.test(x)) &&
+          L[15].some(x => /revisão manual corrigir \(\d{4}-\d{2}-\d{2}\)/.test(x)),
+          String(L[15].length) + ' obs');
+        check('prisão ' + pr.city + ': ref de revisão manual', String(L[13]).startsWith('override:'), String(L[13]));
+      }
       const m = /OSM:(node|way)\/(\d+)/.exec(String(L[13]));
       const ft = m ? osmFeats.find(f => String(f.id) === m[2]) : null;
-      check('prisão ' + pr.city + ': coord == feature OSM (' + L[13] + ')',
-        !!ft && Math.abs(ft.lon - L[8][0]) < 1e-6 && Math.abs(ft.lat - L[8][1]) < 1e-6,
-        ft ? ft.lon + ',' + ft.lat : 'feature ausente');
+      if (!isOvr) {
+        check('prisão ' + pr.city + ': coord == feature OSM (' + L[13] + ')',
+          !!ft && Math.abs(ft.lon - L[8][0]) < 1e-6 && Math.abs(ft.lat - L[8][1]) < 1e-6,
+          ft ? ft.lon + ',' + ft.lat : 'feature ausente');
+      }
       check('prisão ' + pr.city + ': dentro do município',
         inFeature(ringsByGeo.get(L[2]) || [], L[8][0], L[8][1]) || L[12] === 'edge');
+    }
+    // manifesto: proveniência publicada + pareceres 'documentar' em obs
+    const crypto = require('crypto');
+    const ovrSha = crypto.createHash('sha256').update(fs.readFileSync(ovrPath)).digest('hex');
+    check('fontes: revisoes_manuais presente com sha256 do manifesto',
+      catIdx.fontes && catIdx.fontes.revisoes_manuais &&
+      catIdx.fontes.revisoes_manuais.sha256 === ovrSha,
+      catIdx.fontes && catIdx.fontes.revisoes_manuais ? catIdx.fontes.revisoes_manuais.sha256.slice(0, 12) : 'ausente');
+    let nDoc = 0;
+    for (const o of ovr.overrides) {
+      if (o.veredito !== 'documentar') continue;
+      const L = rowFor(o.local.mun_tse, o.local.zona, o.local.local_code);
+      if (!L) { check('documentar ' + o.local.mun_tse + '/' + o.local.local_code + ': local no catálogo', false, 'ausente'); continue; }
+      const has = L[15].some(x => String(x).startsWith('revisão manual documentar (' + o.revisado_em + ')'));
+      if (!has) { check('documentar ' + L[4] + ': parecer registrado em obs', false, String(L[15].length) + ' obs'); continue; }
+      nDoc++;
+      check('documentar ' + L[4] + ': coord do pipeline automático (não do manifesto)',
+        (String(L[9]).includes('TSE') || String(L[9]).includes('OSM')), String(L[9]));
+    }
+    check('todos os documentar com parecer em obs',
+      nDoc === ovr.overrides.filter(o => o.veredito === 'documentar').length, String(nDoc));
+    // correções manuais (corrigir) além das prisões: mesmas garantias
+    for (const o of ovr.overrides) {
+      if (o.veredito !== 'corrigir') continue;
+      const L = rowFor(o.local.mun_tse, o.local.zona, o.local.local_code);
+      if (!L) { check('corrigir ' + o.local.mun_tse + '/' + o.local.local_code + ': local no catálogo', false, 'ausente'); continue; }
+      check('corrigir ' + L[4] + ': coord publicada == manifesto',
+        !!L[8] && Math.abs(o.coord[0] - L[8][0]) <= 1.5e-6 && Math.abs(o.coord[1] - L[8][1]) <= 1.5e-6,
+        JSON.stringify(L[8]) + ' vs ' + JSON.stringify(o.coord));
+      check('corrigir ' + L[4] + ': fonte = revisão manual + ref override',
+        String(L[9]).includes('revisão manual') && String(L[13]).startsWith('override:'), L[9] + ' / ' + L[13]);
+      check('corrigir ' + L[4] + ': dentro do município (ou edge)',
+        !!L[8] && (inFeature(ringsByGeo.get(L[2]) || [], L[8][0], L[8][1]) || L[12] === 'edge'), L[12]);
+      check('corrigir ' + L[4] + ': coord anterior TSE preservada em obs',
+        L[15].some(x => String(x).startsWith('coord oficial TSE anterior:')) ||
+        L[15].some(x => String(x).includes('sentinela -1,-1')),
+        String(L[15].length) + ' obs');
     }
   }
 }
@@ -450,10 +532,26 @@ console.log('== 9) front-end (DOM shim) ==');
   await els2.btnSample.listeners.click[0]();
   const svg4 = els2.mapBox.innerHTML;
   const nDots4 = (svg4.match(/class="dot"/g) || []).length;
+  const nIll4 = (svg4.match(/class="dot dot-ill"/g) || []).length;
   const aria4 = /aria-label="([^"]*)"/.exec(svg4);
-  check('sem catálogo: 3397 pontos ilustrativos', nDots4 === 3397, String(nDots4));
-  check('sem catálogo: aria declara ILUSTRATIVO', !!aria4 && /ILUSTRATIV/.test(aria4[1]), aria4 ? aria4[1].slice(-80) : '');
-  check('sem catálogo: aviso explícito', /ILUSTRATIVAS/.test(els2.warnBox.innerHTML), els2.warnBox.innerHTML.slice(0, 80));
+  check('sem catálogo: nenhum marcador por padrão (estado indisponível)',
+    nDots4 === 0 && nIll4 === 0, `${nDots4}/${nIll4}`);
+  check('sem catálogo: aria declara georreferenciamento indisponível',
+    !!aria4 && /indisponível/.test(aria4[1]), aria4 ? aria4[1].slice(-90) : '');
+  check('sem catálogo: aviso explícito (sem ponto sintético)',
+    /indisponível/.test(els2.warnBox.innerHTML), els2.warnBox.innerHTML.slice(0, 80));
+  check('sem catálogo: totais preservados (chips)',
+    els2.chips.innerHTML.includes('4.876') && els2.chips.innerHTML.includes('3.397'), els2.chips.innerHTML.slice(0, 120));
+  check('sem catálogo: botão modo ilustrativo visível',
+    els2.btnIllus.hidden === false && /Modo ilustrativo/.test(els2.btnIllus.textContent), els2.btnIllus.textContent);
+  // escolha explícita: modo ilustrativo (3397 pontos ocos, modo declarado)
+  await els2.btnIllus.listeners.click[0]();
+  const svg5 = els2.mapBox.innerHTML;
+  const nIll5 = (svg5.match(/class="dot dot-ill"/g) || []).length;
+  const aria5 = /aria-label="([^"]*)"/.exec(svg5);
+  check('sem catálogo + modo ilustrativo: 3397 pontos ocos', nIll5 === 3397, String(nIll5));
+  check('sem catálogo + modo ilustrativo: aria declara ILUSTRATIVO',
+    !!aria5 && /ILUSTRATIV/.test(aria5[1]), aria5 ? aria5[1].slice(-80) : '');
 
   console.log(ok ? '\nGEO-VERIFY OK' : '\nGEO-VERIFY FALHOU');
   process.exit(ok ? 0 : 1);

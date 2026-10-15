@@ -77,6 +77,7 @@ EDGE_MUN_M = 500.0   # fora do polígono, mas a <= 500 m -> 'edge' (manter c/ fl
 CROSS_OK_M = 150.0   # OSM/INEP: <= 150 m confirma a coordenada oficial
 CROSS_OBS_M = 500.0  # 150–500 m -> observação; > 500 m -> conflito (flag)
 COORD_SENTINELA = (-1.0, -1.0)  # TSE usa -1,-1 p/ "sem coordenada"
+OVERRIDES_NAME = 'geo_overrides.json'  # manifesto de revisões manuais (sync/)
 
 # --------------------------------------------------------------------------
 # fontes (URLs oficiais — proveniência registrada no relatório)
@@ -239,15 +240,92 @@ def in_any_ring(rings, x, y) -> bool:
     return any(in_ring(r, x, y) for r in rings)
 
 
-def dist_to_ring_m(ring, x, y) -> float:
-    """Distância (haversine) do ponto ao segmento mais próximo do anel
-    (amostra vértices; suficiente para o threshold de 500 m)."""
+def _dist_pt_seg_m(px, py, ax, ay, bx, by) -> float:
+    """Distância (m) de um ponto ao segmento, em aproximação planar local
+    (mesma convenção de escala de haversine_m: eixo-x escalado por
+    cos(lat média), raio 6371000 m).
+
+    :param px, py: longitude/latitude do ponto (graus).
+    :param ax, ay: longitude/latitude da extremidade A do segmento (graus).
+    :param bx, by: longitude/latitude da extremidade B do segmento (graus).
+    :returns: distância mínima ponto-segmento em metros (0..infinito).
+    """
+    kx = math.cos(math.radians((py + ay + by) / 3.0)) * 6371000.0 * math.radians(1.0)
+    ky = 6371000.0 * math.radians(1.0)
+    axp, ayp = (ax - px) * kx, (ay - py) * ky
+    bxp, byp = (bx - px) * kx, (by - py) * ky
+    vx, vy = bxp - axp, byp - ayp
+    wx, wy = -axp, -ayp
+    v2 = vx * vx + vy * vy
+    t = 0.0 if v2 == 0.0 else max(0.0, min(1.0, (wx * vx + wy * vy) / v2))
+    return math.hypot(axp + t * vx, ayp + t * vy)
+
+
+def _proj_pt_seg_deg(px, py, ax, ay, bx, by) -> tuple[float, float, float]:
+    """Projeção de (px, py) no segmento A-B (mesma convenção planar de
+    _dist_pt_seg_m).
+
+    :returns: (distância_m, lon_proj, lat_proj) — a projeção é limitada
+        ao segmento (extremidades inclusas).
+    """
+    kx = math.cos(math.radians((py + ay + by) / 3.0)) * 6371000.0 * math.radians(1.0)
+    ky = 6371000.0 * math.radians(1.0)
+    axp, ayp = (ax - px) * kx, (ay - py) * ky
+    bxp, byp = (bx - px) * kx, (by - py) * ky
+    vx, vy = bxp - axp, byp - ayp
+    wx, wy = -axp, -ayp
+    v2 = vx * vx + vy * vy
+    t = 0.0 if v2 == 0.0 else max(0.0, min(1.0, (wx * vx + wy * vy) / v2))
+    return math.hypot(axp + t * vx, ayp + t * vy), (axp + t * vx) / kx + px, (ayp + t * vy) / ky + py
+
+
+def _dist_pt_seg_m(px, py, ax, ay, bx, by) -> float:
+    """Distância (m) de um ponto ao segmento (aproximação planar local).
+
+    :param px, py: longitude/latitude do ponto (graus).
+    :param ax, ay: longitude/latitude da extremidade A (graus).
+    :param bx, by: longitude/latitude da extremidade B (graus).
+    :returns: distância mínima ponto-segmento em metros.
+    """
+    return _proj_pt_seg_deg(px, py, ax, ay, bx, by)[0]
+
+
+def _closest_pt_ring(rings, x, y):
+    """Ponto do anel mais próximo de (x, y) e distância correspondente
+    (distância exata ponto-segmento sobre todos os segmentos).
+
+    :param rings: lista de anéis [(lon, lat), ...] (MultiPolygon = união).
+    :param x: longitude (graus).
+    :param y: latitude (graus).
+    :returns: (distância_m, (lon, lat) do ponto do anel mais próximo).
+    """
     best = float('inf')
-    for i in range(0, len(ring), 3):
-        d = haversine_m(x, y, ring[i][0], ring[i][1])
-        if d < best:
-            best = d
-    return best
+    best_pt = None
+    for ring in rings:
+        for i in range(len(ring) - 1):
+            xi, yi = ring[i]
+            xj, yj = ring[i + 1]
+            d, qx, qy = _proj_pt_seg_deg(x, y, xi, yi, xj, yj)
+            if d < best:
+                best = d
+                best_pt = (qx, qy)
+    return best, best_pt
+
+
+def dist_to_ring_m(ring, x, y) -> float:
+    """Distância exata (m, aproximação planar local) do ponto ao anel:
+    mínimo sobre TODOS os segmentos consecutivos (não apenas vértices
+    amostrados — um ponto sobre segmento longo não depende da densidade
+    de vértices do anel; correção 2026-10 do antigo amostramento stride-3
+    que superestimava a distância na fronteira Indaial/Timbó, 3250 m vs
+    5,6 m reais).
+
+    :param ring: lista [(lon, lat), ...].
+    :param x: longitude (graus).
+    :param y: latitude (graus).
+    :returns: distância mínima em metros (0..infinito).
+    """
+    return _closest_pt_ring([ring], x, y)[0]
 
 
 def load_mesh(path: str):
@@ -1093,30 +1171,46 @@ def point_municipality(feats, lat, lon, rings_by_code=None, bboxes=None):
 
 
 def nearest_municipality(feats, lat, lon, rings_by_code=None, bboxes=None):
-    """Município mais próximo do ponto (amostrando vértices).
+    """Município mais próximo do ponto (distância exata ponto-segmento).
 
-    :param bboxes: dict código -> bbox (opcional; rejeita rápido
-        municípios cuja distância à bbox já excede o melhor achado).
-    :returns: (código IBGE, (lon, lat) do vértice mais próximo) ou None.
+    Correção 2026-10: a versão anterior nunca retornava nada (o loop
+    interno comparava a distância amostrada contra o próprio mínimo já
+    atribuído), o que quebrava a regra de fronteira de 1,5 km em
+    _osm_by_mun. Implementação em 2 estágios: (1) cota inferior por
+    bbox em todos os municípios (barata); (2) distância exata somente
+    nos candidatos cuja cota por bbox fica até 1,5 km da melhor cota
+    (a tolerância de fronteira é bem menor que essa margem, então a
+    cota é suficiente para descarta sem perder o vencedor).
+
+    :param feats: lista [(código IBGE, nome, anéis), ...].
+    :param lat: latitude do ponto (graus).
+    :param lon: longitude do ponto (graus).
+    :param bboxes: dict código -> bbox (opcional; se ausente, calculada).
+    :returns: (código IBGE, (lon, lat) do ponto do anel mais próximo)
+        ou None se o ponto está longe de todos os anéis.
     """
-    best_d = float('inf')
+    if bboxes is None:
+        bboxes = mun_bboxes(feats)
+    best_bbox = float('inf')
+    for code, _nome, _rings in feats:
+        x1, y1, x2, y2 = bboxes[code]
+        cx = min(max(lon, x1), x2)
+        cy = min(max(lat, y1), y2)
+        d = haversine_m(lon, lat, cx, cy)
+        if d < best_bbox:
+            best_bbox = d
     best = None
+    best_d = float('inf')
     for code, _nome, rings in feats:
-        if bboxes is not None:
-            x1, y1, x2, y2 = bboxes[code]
-            cx = min(max(lon, x1), x2)
-            cy = min(max(lat, y1), y2)
-            if haversine_m(lon, lat, cx, cy) > best_d:
-                continue
-        for ring in rings:
-            d = dist_to_ring_m(ring, lon, lat)
-            if d < best_d:
-                best_d = d
-                for i in range(0, len(ring), 3):
-                    dd = haversine_m(lon, lat, ring[i][0], ring[i][1])
-                    if dd < best_d:
-                        best_d = dd
-                        best = (code, (ring[i][0], ring[i][1]))
+        x1, y1, x2, y2 = bboxes[code]
+        cx = min(max(lon, x1), x2)
+        cy = min(max(lat, y1), y2)
+        if haversine_m(lon, lat, cx, cy) > best_bbox + 1500.0:
+            continue
+        d, pt = _closest_pt_ring(rings, lon, lat)
+        if d < best_d:
+            best_d = d
+            best = (code, pt)
     return best
 
 
@@ -1138,11 +1232,21 @@ def validate(cat: dict, feats, rings_by_code: dict) -> dict:
     :returns: stats {valid, edge, out_mun, swap, rejeitado, sem_coord,
         dup_secao, coord_compartilhada}.
     """
+    # obs de classificação re-aplicáveis (validate() é re-executável
+    # idempotentemente): remove a versão anterior antes de re-adicionar
+    _CLASS_OBS = (re.compile(r'^a \d+ m do polígono \(fronteira/ilha\)$'),
+                  re.compile(r'^fora do polígono do município \(\d+ m\) — verificar'),
+                  re.compile(r'^seção duplicada no local$'))
+
+    def _strip_class_obs(l):
+        l.obs = [o for o in l.obs if not any(p.match(str(o)) for p in _CLASS_OBS)]
+
     stats = collections.Counter()
     seen_coord: dict = collections.defaultdict(list)
     for loc in cat.values():
         if len(loc.secoes) != len({(z, s) for z, s in loc.secoes}):
             stats['dup_secao'] += 1
+            _strip_class_obs(loc)
             loc.status = 'pendente'
             loc.obs.append('seção duplicada no local')
             continue
@@ -1164,6 +1268,7 @@ def validate(cat: dict, feats, rings_by_code: dict) -> dict:
             if not in_any_ring(rings, lon, lat):
                 d = min((dist_to_ring_m(r, lon, lat) for r in rings), default=float('inf'))
                 if d <= EDGE_MUN_M:
+                    _strip_class_obs(loc)
                     loc.status = 'edge'
                     loc.obs.append(f'a {d:.0f} m do polígono (fronteira/ilha)')
                     stats['edge'] += 1
@@ -1172,14 +1277,147 @@ def validate(cat: dict, feats, rings_by_code: dict) -> dict:
                     # polígono além da tolerância) não é publicada; a
                     # coordenada oficial do TSE fica registrada para
                     # revisão manual (pendentes.json traz obs).
+                    _strip_class_obs(loc)
                     loc.obs.append(f'fora do polígono do município ({d:.0f} m) '
                                    f'— verificar; coord oficial TSE: {lon},{lat}')
                     loc.status = 'pendente'
                     loc.coord = None
                     stats['out_mun'] += 1
-        seen_coord[loc.coord].append(loc)
+        if loc.coord is not None:
+            seen_coord[loc.coord].append(loc)
     stats['coord_compartilhada'] = sum(len(v) for v in seen_coord.values() if len(v) > 1)
     return dict(stats)
+
+
+# --------------------------------------------------------------------------
+# revisões manuais auditáveis (manifesto versionado sync/geo_overrides.json)
+# --------------------------------------------------------------------------
+
+def load_overrides(path: str) -> dict:
+    """Carrega e valida em falha-dura o manifesto de revisões manuais.
+
+    Esquema (versao "1"): {"versao", "descricao", "overrides": [
+      {"local": {"mun_tse", "zona", "local_code"}, "nome_esperado",
+       "veredito" ("corrigir" | "documentar"),
+       "coord": [lon, lat] (obrigatória em "corrigir", ausente/None em
+       "documentar"), "motivo", "revisado_em",
+       "evidencia": [{"fonte", "url", "acesso_em", "detalhe"}, ...]}]}.
+
+    :param path: caminho do manifesto JSON.
+    :returns: dict do manifesto validado.
+    :raises SourceError: arquivo ausente, versao diferente, local
+        incompleto/duplicado, nome/motivo/revisado_em ausentes,
+        evidência incompleta, veredito inválido, corrigir sem coord
+        (ou coord fora do bbox de SC) ou documentar com coord.
+    """
+    if not os.path.exists(path):
+        raise SourceError(f'manifesto de revisões ausente: {path}')
+    d = json.load(open(path, encoding='utf-8'))
+    if not isinstance(d, dict) or d.get('versao') != '1':
+        raise SourceError('manifesto de revisões: versao != "1"')
+    ovs = d.get('overrides')
+    if not isinstance(ovs, list):
+        raise SourceError('manifesto de revisões: "overrides" não é lista')
+    seen: set = set()
+    for i, o in enumerate(ovs):
+        where = f'manifesto[overrides][{i}]'
+        if not isinstance(o, dict):
+            raise SourceError(f'{where}: não é objeto')
+        loc = o.get('local')
+        if not isinstance(loc, dict):
+            raise SourceError(f'{where}: "local" ausente')
+        key = tuple(str(loc.get(k, '') or '') for k in ('mun_tse', 'zona', 'local_code'))
+        if any(not v for v in key):
+            raise SourceError(f'{where}: local incompleto {key}')
+        if key in seen:
+            raise SourceError(f'{where}: local duplicado {key}')
+        seen.add(key)
+        if not str(o.get('nome_esperado') or '').strip():
+            raise SourceError(f'{where}: nome_esperado ausente')
+        if not str(o.get('motivo') or '').strip():
+            raise SourceError(f'{where}: motivo ausente')
+        if not str(o.get('revisado_em') or '').strip():
+            raise SourceError(f'{where}: revisado_em ausente')
+        v = o.get('veredito')
+        if v not in ('corrigir', 'documentar'):
+            raise SourceError(f'{where}: veredito inválido {v!r}')
+        ev = o.get('evidencia')
+        if not isinstance(ev, list) or not ev:
+            raise SourceError(f'{where}: evidencia ausente/vazia')
+        for j, e in enumerate(ev):
+            if not isinstance(e, dict) or not str(e.get('fonte') or '').strip() \
+                    or not str(e.get('detalhe') or '').strip() \
+                    or not str(e.get('acesso_em') or '').strip():
+                raise SourceError(f'{where}: evidencia[{j}] incompleta')
+        c = o.get('coord')
+        if v == 'corrigir':
+            if not (isinstance(c, list) and len(c) == 2
+                    and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in c)):
+                raise SourceError(f'{where}: veredito corrigir exige coord [lon, lat]')
+            lon, lat = float(c[0]), float(c[1])
+            if not (SC_BBOX[0] <= lon <= SC_BBOX[2] and SC_BBOX[1] <= lat <= SC_BBOX[3]):
+                raise SourceError(f'{where}: coord {c} fora do bbox de SC')
+        elif c is not None:
+            raise SourceError(f'{where}: veredito documentar não pode ter coord')
+    return d
+
+
+def apply_overrides(cat: dict, manifest: dict, lenient: bool = False) -> dict:
+    """Aplica revisões manuais ao catálogo (DEPOIS do pipeline
+    automático; a validação geográfica é re-executada em seguida para
+    classificar as coordenadas revisadas pelo mesmo PIP/bbox).
+
+    - veredito 'corrigir': substitui a coordenada pela revisada — a
+      coordenada original, quando havia, fica preservada em obs;
+    - veredito 'documentar': só registra o parecer em obs (ex.: pendente
+      mantido por ausência de evidência, conflito OSM analisado e
+      resolvido em favor da coordenada oficial) — nenhuma coordenada
+      muda.
+
+    :param cat: catálogo {(mun_tse, zona, local_code): Local}.
+    :param manifest: saída de load_overrides().
+    :param lenient: se True, ignora locais ausentes do catálogo
+        (modo --only/debug); nome divergente SEMPRE falha.
+    :returns: stats {'n', 'corrigir', 'documentar', 'aplicados'}.
+    :raises SourceError: local inexistente (não lenient) ou
+        nome_esperado divergente do nome publicado pelo TSE.
+    """
+    stats = {'n': len(manifest['overrides']), 'corrigir': 0,
+             'documentar': 0, 'aplicados': []}
+    for o in manifest['overrides']:
+        key = (str(o['local']['mun_tse']), str(o['local']['zona']),
+               str(o['local']['local_code']))
+        loc = cat.get(key)
+        if loc is None:
+            if lenient:
+                continue
+            raise SourceError(f'override: local inexistente no catálogo {key}')
+        if norm(o['nome_esperado']) != norm(loc.nome):
+            raise SourceError(f'override {key}: nome_esperado '
+                              f'{o["nome_esperado"]!r} != catálogo {loc.nome!r}')
+        if o['veredito'] == 'corrigir':
+            lon, lat = (float(v) for v in o['coord'])
+            if loc.coord is not None:
+                loc.obs.append(f'coord oficial TSE anterior: '
+                               f'{loc.coord[0]},{loc.coord[1]} (preservada em obs)')
+            loc.coord = (round(lon, 6), round(lat, 6))
+            loc.fonte = 'revisão manual (sync/geo_overrides.json)'
+            loc.match = 'override'
+            loc.conf = 'alta'
+            loc.status = 'verificado'  # re-classificado por validate() em seguida
+            loc.ref = f'override:{key[0]}/{key[1]}/{key[2]}'
+            stats['corrigir'] += 1
+        else:
+            stats['documentar'] += 1
+        loc.obs.append(f'revisão manual {o["veredito"]} ({o["revisado_em"]}): {o["motivo"]}')
+        for e in o['evidencia']:
+            url = str(e.get('url') or '')
+            loc.obs.append(f'evidência: {e["fonte"]}'
+                           + (f' | {url}' if url else '')
+                           + f' | acesso {e["acesso_em"]} | {e["detalhe"]}')
+        stats['aplicados'].append(f'{key[0]}/{key[1]}/{key[2]}')
+    stats['aplicados'].sort()
+    return stats
 
 
 # --------------------------------------------------------------------------
@@ -1203,6 +1441,14 @@ def publish(cat: dict, out_dir: str, tse_index: dict,
     os.makedirs(os.path.dirname(report_path), exist_ok=True)
     items = sorted(cat.values(),
                    key=lambda l: (l.mun_tse, l.zona, l.local_code))
+    for l in items:
+        if l.status in ('pendente', 'ambiguo', 'rejeitado') and l.coord is not None:
+            raise RuntimeError(
+                f'publicação bloqueada: local {l.key} status={l.status} '
+                f'com coordenada (invariante: sem coord publicada sem verificação)')
+        if l.status in ('verificado', 'edge') and l.coord is None:
+            raise RuntimeError(
+                f'publicação bloqueada: local {l.key} status={l.status} sem coordenada')
     n_verified = sum(1 for l in items if l.status in ('verificado', 'edge'))
     n_sec_verified = sum(len(l.secoes) for l in items if l.status in ('verificado', 'edge'))
     n_sec_total = sum(len(l.secoes) for l in items)
@@ -1336,6 +1582,7 @@ def _build_report(items, stats: dict, fontes: dict, gerado_em: str,
                 'verificacao_independente_osm': osm,
                 'verificacao_institucional_inep': inep,
                 'crosscheck_tre_sc': tre,
+                'revisoes_manuais': stats.get('overrides', {}),
                 'nao_resolvidos': sum(1 for l in items
                                       if l.status in ('pendente', 'ambiguo', 'rejeitado')),
             },
@@ -1583,7 +1830,24 @@ def main(argv=None) -> int:
     stats['tre_sc'] = link_tre_sc(cat, tre)
     stats['osm_cross'] = cross_validate_osm(cat, osm, feats, rings_by_code)
     stats['inep'] = cross_check_inep(cat, inep, feats)
+
+    # Revisões manuais auditáveis (manifesto versionado em sync/):
+    # aplicado DEPOIS do pipeline automático. A validação geográfica
+    # (PIP/bbox) roda UMA única vez, por último, sobre o catálogo final —
+    # coordenada revisada só é publicada se contida no município (ou
+    # edge <= 500 m). O sha256 do manifesto entra em fontes -> _gerado_em
+    # (proteção contra catálogo defasado).
+    ovr_path = os.path.join(REPO, 'sync', OVERRIDES_NAME)
+    manifest = load_overrides(ovr_path)
+    stats['overrides'] = apply_overrides(cat, manifest, lenient=bool(args.only))
     stats['validacao'] = validate(cat, feats, rings_by_code)
+    fontes['revisoes_manuais'] = {
+        'arquivo': f'sync/{OVERRIDES_NAME}',
+        'sha256': sha256_file(ovr_path),
+        'n': stats['overrides']['n'],
+        'corrigir': stats['overrides']['corrigir'],
+        'documentar': stats['overrides']['documentar'],
+    }
 
     resumo = publish(cat, args.out, tse_index, fontes, stats, args.report,
                      n_sec_snap=len(snap_rows), n_sec_agregadas=n_sec_agregadas)

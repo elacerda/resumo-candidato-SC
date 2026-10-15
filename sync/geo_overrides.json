@@ -1,0 +1,264 @@
+{
+  "versao": "1",
+  "descricao": "Revisoes geograficas manuais auditaveis dos locais de votacao SC 2026. Cada entrada referencia um local pelo identificador oficial (mun_tse, zona, NR_LOCAL_VOTACAO) e exige nome_esperado (validado contra o catalogo), motivo, evidencias com fonte/URL/data de acesso e revisao datada. veredito 'corrigir' substitui a coordenada (a original e preservada em obs); 'documentar' apenas registra o parecer (ex.: pendente mantido, conflito OSM resolvido em favor da coordenada oficial). O pipeline (sync/geo_ref.py) carrega e valida este manifesto em falha-dura, reexecuta a validacao geografica apos aplicar, e registra sha256 do manifesto em fontes['revisoes_manuais'] (entra no hash de gerado_em — protecao contra catalogo defasado).",
+  "overrides": [
+    {
+      "local": { "mun_tse": "80578", "zona": "6", "local_code": "1767" },
+      "nome_esperado": "PRESÍDIO REGIONAL DE CAÇADOR",
+      "veredito": "corrigir",
+      "coord": [-51.001696, -26.796481],
+      "motivo": "TSE oficial 2026 sem coordenada (sentinela -1,-1; idem 2022). A mesma instalacao, sob codigo de local 1740 em 2018, tinha coordenada oficial TSE (-51.00116624,-26.79655032) no mesmo endereco (AV. ALBINO FELIPE PATRICK, N. 50). O diretorio oficial de instalacoes do Governo de SC (SEJURI) georreferencia o presidio na coordenada revisada — 53 m da coordenada TSE 2018 — e o reverse geocoding OSM nesse ponto retorna a carceragem (way/369185996, amenity=prison) na Avenida Albino Phelippe Potrich, Bom Sucesso. Tres fontes independentes convergem num raio de ~55 m; coordenada dentro do poligono de Cacador (7 km do anel).",
+      "evidencia": [
+        {
+          "fonte": "Governo de SC — Carta de Serviços (SEJURI), unidade 5841",
+          "url": "https://gateway.scdigital.sc.gov.br/carta-servicos-api/unidades-prestadoras/presidio-regional-de-cacador-5841",
+          "acesso_em": "2026-10-15",
+          "detalhe": "Presidio Regional de Cacador, Av. Albino Felipe Potrick, 50, Bom Sucesso, CEP 89500000; latitude -26.796481, longitude -51.001696 (organizacao: SEJURI — Secretaria de Estado de Justica e Reintegracao Social)"
+        },
+        {
+          "fonte": "TSE — Eleitorado por local de votacao 2018 (zip oficial, CSV nacional)",
+          "url": "https://www.tse.jus.br/eleicoes/eleitorado-por-local-de-votacao/2018",
+          "acesso_em": "2026-10-15",
+          "detalhe": "Cacador zona 6 local 1740 'PRESIDIO REGIONAL DE CACADOR', AV. ALBINO FELIPE PATRICK, N. 50: lat -26.79655032, lon -51.00116624 (53 m da coordenada revisada); em 2022 o mesmo local (recodificado 1767) ja publicava sentinela -1,-1"
+        },
+        {
+          "fonte": "OpenStreetMap — way/369185996",
+          "url": "https://www.openstreetmap.org/way/369185996",
+          "acesso_em": "2026-10-15",
+          "detalhe": "way/369185996 (amenity=prison, sem nome) na Avenida Albino Phelippe Potrich, Bom Sucesso; centroide da feature 18 m da coordenada revisada (52 m da TSE 2018); reverse Nominatim da coordenada revisada cai nesta feature"
+        }
+      ],
+      "revisado_em": "2026-10-15"
+    },
+    {
+      "local": { "mun_tse": "81035", "zona": "43", "local_code": "1155" },
+      "nome_esperado": "ESCOLA MUNICIPAL SANTA TEREZINHA",
+      "veredito": "corrigir",
+      "coord": [-52.261356, -26.850450],
+      "motivo": "A coordenada oficial TSE (identica em 2018/2022/2026) cai sobre o predio da Escola Tereza Migliorini (OSM way/699803547, 25 m), a 934 m do endereco oficial RUA PRESIDENTE DUTRA, 22 — endereco confirmado pelo INEP 2024 (CO_ENTIDADE 42083982). A escola OSM 'Colegio Santa Terezinha' (way/979436513, amenity=school) fica a 89 m da Rua Presidente Dutra no mesmo loteamento (Barella/Rosa, CEP 89694-000) e e a unica escola do municipio naquela rua; a coordenada revisada e dentro do poligono de Faxinal dos Guedes. Ressalva registrada: a grafia OSM e 'Colegio' (a publico no municipio e 'Escola Municipal') — em cidade de ~4 mil habitantes e a mesma instalacao escolar da rua oficial.",
+      "evidencia": [
+        {
+          "fonte": "INEP — Censo Escolar 2024 (microdados_ed_basica_2024)",
+          "url": "http://download.inep.gov.br/microdados/censos/microdados_ed_basica_2024.zip",
+          "acesso_em": "2026-10-15",
+          "detalhe": "CO_ENTIDADE 42083982 'ESCOLA MUNICIPAL SANTA TEREZINHA' (Faxinal dos Guedes, situacao 1): RUA PRESIDENTE DUTRA 22, bairro CENTRO — identico ao endereco TSE 2018/2022/2026"
+        },
+        {
+          "fonte": "OpenStreetMap — way/979436513",
+          "url": "https://www.openstreetmap.org/way/979436513",
+          "acesso_em": "2026-10-15",
+          "detalhe": "way/979436513 (amenity=school) 'Colegio Santa Terezinha' a 89 m da Rua Presidente Dutra (Nominatim: Loteamento Barella, Faxinal dos Guedes, CEP 89694-000)"
+        },
+        {
+          "fonte": "OpenStreetMap — way/699803547",
+          "url": "https://www.openstreetmap.org/way/699803547",
+          "acesso_em": "2026-10-15",
+          "detalhe": "way/699803547 (amenity=school) 'Escola Tereza Migliorini' a 25 m da coordenada oficial TSE — outra escola, incompativel com o endereco oficial RUA PRESIDENTE DUTRA, 22"
+        }
+      ],
+      "revisado_em": "2026-10-15"
+    },
+    {
+      "local": { "mun_tse": "82910", "zona": "26", "local_code": "1236" },
+      "nome_esperado": "ESCOLA DE EDUCAÇÃO BÁSICA ANÍBAL DE BARBA",
+      "veredito": "corrigir",
+      "coord": [-49.633378, -27.204198],
+      "motivo": "A coordenada oficial TSE 2026 e relicto do local substituto de 2022: em 2022 o local 1236 (zona 26) operava como 'EEB HENRIQUE DA SILVA FONTES (EM SUBST ANIBAL DE BARBA)' na RUA JACO FINARDI 1550 com a coordenada que o arquivo 2026 manteve. Em 2026 o nome/endereco voltaram a escola original (RUA DEPUTADO WALTER ROUSSENQ, 156 — identico ao de 2018, quando o local 1236 era a escola sem coordenada), mas a coordenada do substituto persistiu. O INEP 2024 (CO_ENTIDADE 42007038) confirma a escola na RUA DEPUTADO WALTER ROUSSENQ 156, CANTA GALO; a escola OSM de nome identico (way/314454825) fica a 70 m dessa rua. Coordenada revisada dentro do poligono de Rio do Sul.",
+      "evidencia": [
+        {
+          "fonte": "TSE — Eleitorado por local de votacao 2022 (zip oficial, CSV nacional)",
+          "url": "https://www.tse.jus.br/eleicoes/eleitorado-por-local-de-votacao/2022",
+          "acesso_em": "2026-10-15",
+          "detalhe": "Rio do Sul zona 26 local 1236 em 2022: 'EEB HENRIQUE DA SILVA FONTES (EM SUBST ANIBAL DE BARBA)', RUA JACO FINARDI 1550, lat -27.2056253, lon -49.6285127 — a coordenada publicada em 2026"
+        },
+        {
+          "fonte": "TSE — Eleitorado por local de votacao 2018 (zip oficial, CSV nacional)",
+          "url": "https://www.tse.jus.br/eleicoes/eleitorado-por-local-de-votacao/2018",
+          "acesso_em": "2026-10-15",
+          "detalhe": "Rio do Sul zona 26 local 1236 em 2018: 'ESCOLA DE EDUCACAO BASICA ANIBAL DE BARBA', RUA DEPUTADO WALTER ROUSSENQ, N. 156, sem coordenada (sentinela)"
+        },
+        {
+          "fonte": "INEP — Censo Escolar 2024 (microdados_ed_basica_2024)",
+          "url": "http://download.inep.gov.br/microdados/censos/microdados_ed_basica_2024.zip",
+          "acesso_em": "2026-10-15",
+          "detalhe": "CO_ENTIDADE 42007038 'CE ANIBAL DE BARBA' (Rio do Sul): RUA DEPUTADO WALTER ROUSSENQ 156, CANTA GALO; o substituto de 2022 e unidade distinta (CO_ENTIDADE 42023246, RUA JACO FINARDI)"
+        },
+        {
+          "fonte": "OpenStreetMap — way/314454825",
+          "url": "https://www.openstreetmap.org/way/314454825",
+          "acesso_em": "2026-10-15",
+          "detalhe": "way/314454825 (amenity=school) 'Escola de Educacao Basica Anibal de Barba' a 70 m da Rua Deputado Walter Roussenq (Nominatim: Canta Galo, Rio do Sul, CEP 89163-074)"
+        }
+      ],
+      "revisado_em": "2026-10-15"
+    },
+    {
+      "local": { "mun_tse": "83275", "zona": "84", "local_code": "1163" },
+      "nome_esperado": "ESCOLA DE ENSINO FUNDAMENTAL DOUTOR HOMERO DE MIRANDA GOMES",
+      "veredito": "corrigir",
+      "coord": [-48.626929, -27.566194],
+      "motivo": "A coordenada oficial TSE (identica em 2018/2022/2026) cai na Rua Bom Pastor (Ipiranga, CEP 88113-310), a 651 m do endereco oficial RUA OTTO JULIO MALINA, S/N, bairro IPIRANGA, CEP 88111500 — endereco confirmado pelo INEP 2024 (CO_ENTIDADE 42003709: 'RUA OTTO JULIO MALINA', BAIRRO IPIRANGA). A escola OSM de nome identico (node/2071836715) fica na Rua Otto Julio Malina, Ipiranga (CEP 88111-510). O endereco oficial e estavel ha 8 anos e a coordenada o contradiz desde ao menos 2018; a coordenada revisada e dentro do poligono de Sao Jose.",
+      "evidencia": [
+        {
+          "fonte": "INEP — Censo Escolar 2024 (microdados_ed_basica_2024)",
+          "url": "http://download.inep.gov.br/microdados/censos/microdados_ed_basica_2024.zip",
+          "acesso_em": "2026-10-15",
+          "detalhe": "CO_ENTIDADE 42003709 'EEF DR HOMERO DE MIRANDA GOMES' (Sao Jose): RUA OTTO JULIO MALINA (s/n), BAIRRO IPIRANGA — identico ao endereco TSE 2018/2022/2026"
+        },
+        {
+          "fonte": "OpenStreetMap — node/2071836715",
+          "url": "https://www.openstreetmap.org/node/2071836715",
+          "acesso_em": "2026-10-15",
+          "detalhe": "node/2071836715 (amenity=school) 'Escola de Ensino Fundamental Doutor Homero de Miranda Gomes' na Rua Otto Julio Malina (Nominatim: Ipiranga, Barreiros, Sao Jose, CEP 88111-510)"
+        },
+        {
+          "fonte": "Nominatim — reverse geocoding da coordenada oficial TSE 2026",
+          "url": "https://nominatim.openstreetmap.org/reverse?lat=-27.568572&lon=-48.632962",
+          "acesso_em": "2026-10-15",
+          "detalhe": "a coordenada oficial (-48.632962,-27.568572) cai em 'Rua Bom Pastor, Ipiranga, Barreiros, Sao Jose, 88113-310' — rua diversa do endereco oficial RUA OTTO JULIO MALINA"
+        }
+      ],
+      "revisado_em": "2026-10-15"
+    },
+    {
+      "local": { "mun_tse": "81680", "zona": "58", "local_code": "1023" },
+      "nome_esperado": "CENTRO DE EDUCAÇÃO PROFESSOR IVO LUIZ HONNEF",
+      "veredito": "documentar",
+      "coord": null,
+      "motivo": "MANTIDO PENDENTE (sem coordenada publicada). A coordenada oficial TSE 2026 (-53.214068,-26.671421; identica em 2018/2022) esta 2.289 m fora do poligono de Tigrinhos, dentro de Sao Miguel da Boa Vista, a 14 m do povoado 'Linha Poco Parado' (Nominatim: -26.6713199,-53.2140994) — geocodificacao de localidade de municipio vizinho, ~5,9 km do centro de Tigrinhos. A escola esta no centro: INEP 2024 (CO_ENTIDADE 42132975) 'RUA VALDEMAR STILER Nº 38, CENTRO'; endereco TSE/TRE-SC 'RUA VALDEMAR STIELER, N. 42' (variaes de grafia da mesma rua). A rua/escola nao existem em OSM nem em Nominatim (consultas 2026-10-15 sem resultado; Overpass com timeout). Nenhuma coordenada de nivel predio verificavel em fonte independente — nao e licito publicar o geocode do povoado nem promover o endereco aproximado; a coordenada oficial TSE fica preservada em obs para revisao futura.",
+      "evidencia": [
+        {
+          "fonte": "Nominatim — 'Linha Poco Parado'",
+          "url": "https://nominatim.openstreetmap.org/search?q=Linha+Poco+Parado,Sao+Miguel+da+Boa+Vista,SC",
+          "acesso_em": "2026-10-15",
+          "detalhe": "povoado 'Linha Poco Parado, Sao Miguel da Boa Vista' em (-53.2140994,-26.6713199) — 14 m da coordenada oficial TSE 2026, em municipio diferente do da secao (Tigrinhos)"
+        },
+        {
+          "fonte": "INEP — Censo Escolar 2024 (microdados_ed_basica_2024)",
+          "url": "http://download.inep.gov.br/microdados/censos/microdados_ed_basica_2024.zip",
+          "acesso_em": "2026-10-15",
+          "detalhe": "CO_ENTIDADE 42132975 'CE PROFESSOR IVO LUIZ HONNEF' (Tigrinhos, situacao 1): RUA VALDEMAR STILER Nº 38, bairro CENTRO — localizacao institucional real da escola"
+        },
+        {
+          "fonte": "OpenStreetMap/Nominatim — busca 'Valdemar Stiler, Tigrinhos'",
+          "url": "https://nominatim.openstreetmap.org/search?q=Valdemar+Stiler,Tigrinhos,SC",
+          "acesso_em": "2026-10-15",
+          "detalhe": "sem resultado (rua sem cobertura OSM/Nominatim); Overpass (nome=Valdemar*) em Tigrinhos: timeout/sem elementos — nao ha feature de nivel predio para validar"
+        }
+      ],
+      "revisado_em": "2026-10-15"
+    },
+    {
+      "local": { "mun_tse": "80055", "zona": "102", "local_code": "1074" },
+      "nome_esperado": "SALÃO COMUNITÁRIO SÃO JOSÉ",
+      "veredito": "documentar",
+      "coord": null,
+      "motivo": "CONFLITO OSM (7.382 m) ANALISADO — coordenada oficial TSE MANTIDA. A coordenada oficial (identica em 2018/2022/2026) esta na Estrada Geral Morro do Carvao (reverse geocoding 2026-10-15), a estrada geral do bairro Morro do Carvao — mesma estrada indicada no endereco TSE (ESTRADA GERAL MOSQUITO GRANDE, S/N; o povoado Mosquito Grande fica ~5,5 km adiante na mesma via). O candidato OSM de nome identico ('Salao Comunitario Sao Jose') esta a 7,4 km em outra via; nao ha terceira fonte que arbitre se e a mesma instalacao ou mapping OSM equivocado. Sem arbitro independente, a coordenada oficial estavel ha 8 anos permanece, com o flag de conflito mantido.",
+      "evidencia": [
+        {
+          "fonte": "Nominatim — reverse geocoding da coordenada oficial TSE 2026",
+          "url": "https://nominatim.openstreetmap.org/reverse?lat=-27.320798&lon=-49.69079",
+          "acesso_em": "2026-10-15",
+          "detalhe": "'Estrada Geral Morro do Carvao, Morro do Carvao, Agronomica, 89167-653' — via oficial do endereco TSE (ESTRADA GERAL MOSQUITO GRANDE)"
+        },
+        {
+          "fonte": "Nominatim — 'Mosquito Grande, Agronomica'",
+          "url": "https://nominatim.openstreetmap.org/search?q=Mosquito+Grande,Agronomica,SC",
+          "acesso_em": "2026-10-15",
+          "detalhe": "povoado Mosquito Grande em (-49.7466731,-27.3684993), ~5,5 km NE da coordenada oficial, na continuacao da Estrada Geral Morro do Carvao — coerente com endereco 'ESTRADA GERAL MOSQUITO GRANDE'"
+        },
+        {
+          "fonte": "TSE — Eleitorado por local de votacao 2018/2022",
+          "url": "https://www.tse.jus.br/eleicoes/eleitorado-por-local-de-votacao/2018",
+          "acesso_em": "2026-10-15",
+          "detalhe": "local 1074 zona 102 com coordenada e endereco identicos em 2018 e 2022 (estabilidade de 8 anos)"
+        }
+      ],
+      "revisado_em": "2026-10-15"
+    },
+    {
+      "local": { "mun_tse": "80373", "zona": "102", "local_code": "1147" },
+      "nome_esperado": "ESCOLA ISOLADA MUNICIPAL ALTO COBRAS SUL",
+      "veredito": "documentar",
+      "coord": null,
+      "motivo": "CONFLITO OSM (6.807 m) ANALISADO — coordenada oficial TSE MANTIDA. A coordenada oficial (identica em 2018/2022/2026) esta na rodovia AUR-450 dentro da localidade 'Alto Cobras Sul' (limite administrativo homonimo a 40 m; CEP 89186-000 confere com o TSE). A escola OSM 'Escola Isolada Municipal Alto Cobras Sul' esta a 6,8 km na rodovia AUR-025 (outra ramificacao do distrito rural): mapping OSM provavelmente equivocado ou escola isolada deslocada; sem terceira fonte, a coordenada oficial estavel ha 8 anos permanece, com o flag de conflito mantido.",
+      "evidencia": [
+        {
+          "fonte": "Nominatim — reverse geocoding da coordenada oficial TSE 2026",
+          "url": "https://nominatim.openstreetmap.org/reverse?lat=-27.336215&lon=-49.594499",
+          "acesso_em": "2026-10-15",
+          "detalhe": "'AUR-450, Alto Cobras Sul, Aurora, 89186-000' — localidade do endereco TSE (ESTRADA GERAL ALTO COBRAS SUL, S/N); unidade administrativa 'Alto Cobras Sul' (rel/9894839) a 40 m"
+        },
+        {
+          "fonte": "Nominatim — 'Escola Isolada Municipal Alto Cobras Sul'",
+          "url": "https://nominatim.openstreetmap.org/search?q=Escola+Isolada+Municipal+Alto+Cobras+Sul,Aurora,SC",
+          "acesso_em": "2026-10-15",
+          "detalhe": "feature OSM da escola em AUR-025, Serra Aurora (-49.5319669,-27.3105351) — 6,8 km da coordenada oficial, em outra ramificacao rural"
+        },
+        {
+          "fonte": "TSE — Eleitorado por local de votacao 2018/2022",
+          "url": "https://www.tse.jus.br/eleicoes/eleitorado-por-local-de-votacao/2018",
+          "acesso_em": "2026-10-15",
+          "detalhe": "local 1147 zona 102 com coordenada e endereco identicos em 2018 e 2022 (estabilidade de 8 anos)"
+        }
+      ],
+      "revisado_em": "2026-10-15"
+    },
+    {
+      "local": { "mun_tse": "81809", "zona": "18", "local_code": "1120" },
+      "nome_esperado": "ESCOLA MUNICIPAL SÃO FRANCISCO",
+      "veredito": "documentar",
+      "coord": null,
+      "motivo": "CONFLITO OSM (677 m) ANALISADO — coordenada oficial TSE MANTIDA. A coordenada oficial (identica em 2018/2022/2026) esta na rua oficial do endereco TSE: reverse geocoding (2026-10-15) = 'Rua Sao Francisco, Luzerna, 89609-000' (endereco TSE: RUA SAO FRANCISCO, N. 25, CEP 89609000). O candidato OSM de nome identico esta a 677 m, em uma 'Trilha do bosque' (trilha, nao escola) — node OSM mal posicionado. A coordenada oficial confere com a rua oficial; permanece, com o flag de conflito mantido.",
+      "evidencia": [
+        {
+          "fonte": "Nominatim — reverse geocoding da coordenada oficial TSE 2026",
+          "url": "https://nominatim.openstreetmap.org/reverse?lat=-27.127658&lon=-51.467905",
+          "acesso_em": "2026-10-15",
+          "detalhe": "'Rua Sao Francisco, Luzerna, 89609-000' — a rua oficial do endereco TSE (RUA SAO FRANCISCO, N. 25)"
+        },
+        {
+          "fonte": "Nominatim — 'Rua Sao Francisco, Luzerna'",
+          "url": "https://nominatim.openstreetmap.org/search?q=Rua+Sao+Francisco,Luzerna,SC",
+          "acesso_em": "2026-10-15",
+          "detalhe": "via em (-51.4635779,-27.1277937) — mesma rua, CEP 89609-000"
+        },
+        {
+          "fonte": "TSE — Eleitorado por local de votacao 2018/2022",
+          "url": "https://www.tse.jus.br/eleicoes/eleitorado-por-local-de-votacao/2018",
+          "acesso_em": "2026-10-15",
+          "detalhe": "local 1120 zona 18 com coordenada e endereco identicos em 2018 e 2022 (estabilidade de 8 anos)"
+        }
+      ],
+      "revisado_em": "2026-10-15"
+    },
+    {
+      "local": { "mun_tse": "82678", "zona": "25", "local_code": "1015" },
+      "nome_esperado": "CENTRO CULTURAL 25 DE JULHO",
+      "veredito": "documentar",
+      "coord": null,
+      "motivo": "CONFLITO OSM (29.900 m) ANALISADO — coordenada oficial TSE MANTIDA. A coordenada oficial esta na rua oficial do endereco TSE: reverse geocoding (2026-10-15) = 'Rua Antiocho Pereira, Cidade Nova, Porto Uniao' (endereco TSE: RUA ANTIOCHO PEREIRA, 208). O candidato OSM de nome identico (node/8638191203) esta a ~30 km, no distrito de Santa Cruz do Timbo (mesmo municipio, outra localidade, na Rodovia Alexandre Passos Puzyna) — instalacao distinta, nao a mesma entidade. A coordenada oficial permanece, com o flag de conflito mantido. Obs.: o arquivo TSE 2026 marca CD_SITU_LOCAL_VOTACAO=5 para este local, mas ele tem 2 secoes no dataset 2026 (uso oficial mantido pelo proprio TSE).",
+      "evidencia": [
+        {
+          "fonte": "Nominatim — reverse geocoding da coordenada oficial TSE 2026",
+          "url": "https://nominatim.openstreetmap.org/reverse?lat=-26.237308&lon=-51.084476",
+          "acesso_em": "2026-10-15",
+          "detalhe": "'Rua Antiocho Pereira, Cidade Nova, Porto Uniao, 84600-115' — a rua oficial do endereco TSE (RUA ANTIOCHO PEREIRA, 208)"
+        },
+        {
+          "fonte": "Nominatim — reverse geocoding do node OSM 8638191203",
+          "url": "https://nominatim.openstreetmap.org/reverse?lat=-26.411447&lon=-50.855881",
+          "acesso_em": "2026-10-15",
+          "detalhe": "'Rodovia Alexandre Passos Puzyna, Santa Cruz do Timbo, Porto Uniao' — distrito do municipio a ~30 km: entidade distinta, nao a mesma instalacao do centro"
+        },
+        {
+          "fonte": "TSE — Eleitorado por local de votacao 2018/2022",
+          "url": "https://www.tse.jus.br/eleicoes/eleitorado-por-local-de-votacao/2018",
+          "acesso_em": "2026-10-15",
+          "detalhe": "local 1015 zona 25 ausente em 2018/2022 (criado/reativado para 2026) com coordenada consistente com a rua oficial desde a publicacao"
+        }
+      ],
+      "revisado_em": "2026-10-15"
+    }
+  ]
+}

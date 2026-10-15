@@ -14,9 +14,16 @@ Valida (somente stdlib):
      test/geo_ref_locais.json, o catálogo deve reproduzir a coordenada
      oficial exata e o local deve estar dentro do município, a < 30 km
      do centro da cidade (referência Wikipedia);
-  7. prisões (sem coordenada oficial no TSE): se resolvidas, a fonte
-     deve ser OSM e a contenção deve valer;
-  8. determinismo: re-executar sync/geo_ref.py com o mesmo cache
+  7. lacunas sem coordenada oficial no TSE (ex.: prisões): se
+     resolvidas, a fonte deve ser OSM OU revisão manual auditável
+     (sync/geo_overrides.json, veredito 'corrigir' — coordenada
+     publicada == coordenada do manifesto, evidência em obs) e a
+     contenção deve valer;
+  8. manifesto de revisões manuais: sha256 em fontes do index bate com
+     o arquivo versionado; 'corrigir' publicado com coord/fonte/ref do
+     manifesto e coord anterior preservada; 'documentar' registrado em
+     obs sem alterar coordenada;
+  9. determinismo: re-executar sync/geo_ref.py com o mesmo cache
      produz bytes idênticos (offline, quando o cache está completo).
 
 Uso: python3 test/geo_ref_check.py [--out DIR] [--no-rebuild]
@@ -200,14 +207,59 @@ def main():
             check(f"prisão {p['city']}: pendente (aceitável, reportada)",
                   L[12] in ('pendente', 'ambiguo'), str(L[12]))
             continue
-        check(f"prisão {p['city']}: fonte OSM (TSE sem coordenada)",
-              'OSM' in L[9], str(L[9]))
+        is_ovr = 'revisão manual' in L[9]
+        check(f"prisão {p['city']}: fonte OSM ou revisão manual (TSE sem coord)",
+              'OSM' in L[9] or is_ovr, str(L[9]))
         rings = rings_by_code.get(L[2], [])
         lon, lat = L[8]
         check(f"prisão {p['city']}: dentro do município",
               geo_ref.in_any_ring(rings, lon, lat) or L[12] == 'edge')
 
-    print('== 8) determinismo (rebuild offline do cache) ==')
+    print('== 8) manifesto de revisões manuais (sync/geo_overrides.json) ==')
+    ovr_path = os.path.join(REPO, 'sync', 'geo_overrides.json')
+    if not os.path.exists(ovr_path):
+        check('manifesto presente no repositório', False, 'ausente')
+    else:
+        import hashlib as _hashlib
+        ovr = json.load(open(ovr_path, encoding='utf-8'))
+        sha = _hashlib.sha256(open(ovr_path, 'rb').read()).hexdigest()
+        rm = index.get('fontes', {}).get('revisoes_manuais', {})
+        check('fontes.revisoes_manuais presente', bool(rm))
+        check('sha256 publicado == arquivo versionado', rm.get('sha256') == sha,
+              f"{rm.get('sha256', '')[:12]} vs {sha[:12]}")
+        check('contagens batem com o manifesto',
+              rm.get('n') == len(ovr['overrides'])
+              and rm.get('corrigir') == sum(1 for o in ovr['overrides'] if o['veredito'] == 'corrigir')
+              and rm.get('documentar') == sum(1 for o in ovr['overrides'] if o['veredito'] == 'documentar'))
+        for o in ovr['overrides']:
+            L = loc_by_key.get((o['local']['mun_tse'], int(o['local']['zona']), o['local']['local_code']))
+            if L is None:
+                check(f"manifesto {o['local']}: local no catálogo", False, 'ausente')
+                continue
+            if o['veredito'] == 'corrigir':
+                check(f"corrigir {L[4]}: coord publicada == manifesto",
+                      L[8] is not None and abs(o['coord'][0] - L[8][0]) <= 1.5e-6
+                      and abs(o['coord'][1] - L[8][1]) <= 1.5e-6, str(L[8]))
+                check(f"corrigir {L[4]}: fonte/ref de revisão",
+                      'revisão manual' in L[9] and str(L[13]).startswith('override:'),
+                      f'{L[9]} / {L[13]}')
+                check(f"corrigir {L[4]}: status coerente + dentro do município",
+                      L[12] in ('verificado', 'edge')
+                      and (geo_ref.in_any_ring(rings_by_code.get(L[2], []), L[8][0], L[8][1])
+                           or L[12] == 'edge'), L[12])
+                check(f"corrigir {L[4]}: coord anterior/sentinela preservada em obs",
+                      any(str(x).startswith('coord oficial TSE anterior:') for x in L[15])
+                      or any('sentinela -1,-1' in str(x) for x in L[15]), str(L[15])[:80])
+                check(f"corrigir {L[4]}: evidências em obs",
+                      sum(1 for x in L[15] if 'evidência:' in str(x)) >= 1, str(len(L[15])))
+            else:
+                check(f"documentar {L[4]}: parecer em obs",
+                      any(str(x).startswith(f"revisão manual documentar ({o['revisado_em']})")
+                          for x in L[15]), str(L[15])[:80])
+                check(f"documentar {L[4]}: coord do pipeline automático (não do manifesto)",
+                      L[9] != '' and 'revisão manual' not in L[9], str(L[9]))
+
+    print('== 9) determinismo (rebuild offline do cache) ==')
     if args.no_rebuild:
         print('   (pulando: --no-rebuild)')
     else:

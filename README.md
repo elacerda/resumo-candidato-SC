@@ -95,11 +95,15 @@ uma explicitamente (aria do SVG, HUD, legenda, tooltips e avisos):
    posição determinística dentro do polígono do município — visualmente distinto do
    marcador verificado e explicitamente rotulado; as coordenadas verificadas nunca são
    alteradas por esse modo.
-4. **Fallback sem catálogo** — se `data/geo_loc/` estiver indisponível (ex.: build
-   parcial), o mapa volta ao comportamento anterior: 1 ponto **ilustrativo** por seção
-   (Mersenne Twister determinístico dentro do polígono do município), com a UI
-   declarando o modo ILUSTRATIVO em todos os lugares. Os dois modos **nunca se
-   misturam** no mesmo mapa.
+4. **Fallback sem catálogo (estado indisponível declarado)** — se `data/geo_loc/`
+   estiver indisponível (ex.: build parcial), **nenhum ponto sintético é desenhado por
+   padrão**: o mapa exibe apenas choropleth, rótulos e totais por município (preservados),
+   e a UI declara em todos os lugares (aria do SVG, HUD, legenda e aviso) que o
+   georreferenciamento está indisponível. O botão "Modo ilustrativo (sem catálogo)"
+   desenha, **somente por escolha explícita do usuário**, 1 ponto **ilustrativo** por
+   seção (Mersenne Twister determinístico dentro do polígono do município) como círculos
+   ocos tracejados, com a UI declarando o modo ILUSTRATIVO em todos os lugares. Os dois
+   modos **nunca se misturam** no mesmo mapa.
 
 Regras do catálogo (proveniência — `reports/geo_cobertura.json` detalha):
 

@@ -27,6 +27,7 @@ data/geo_sc_municipios.json   Malha municipal de SC (IBGE, espelho tbrugz/geodat
 data/geo_loc/                 Catálogo de georreferenciamento (locais + coords verificadas)
 sync/geo_ref.py               Pipeline offline de georreferenciamento (stdlib; determinístico)
 sync/geo_pbf.py               Leitor OSM PBF (stdlib) para o pipeline
+sync/geo_overrides.json       Revisões geográficas manuais auditáveis (manifesto; aplicado pelo pipeline)
 data/1333_sc_2026.json        Exemplo (J. Andózio, 1333, Dep. Federal, 2026)
 data/tse_2026/                Snapshot TSE (gerado por sync/tse_sync.py)
 sync/tse_sync.py              Gera o snapshot (stdlib only, determinístico)
@@ -114,10 +115,21 @@ votos, local, end}], candidato?, numero?, cargo?, eleicao?, fonte?}`.
     - `cache/` (downloads) NÃO é commitado; `data/geo_loc/` e
       `reports/geo_cobertura.json` sim (commitado pelo CI `geo-sync.yml`).
     - Regerar: `python3 sync/geo_ref.py` (offline com cache; `--fetch` para baixar).
-      Determinístico: mesmas entradas → bytes idênticos (validado por
-      `test/geo_ref_check.py` §8).
+      Determinístico: mesmas entradas (fontes + manifesto de revisões) → bytes
+      idênticos (validado por `test/geo_ref_check.py` §9).
+    - **Revisões manuais auditáveis** (`sync/geo_overrides.json`): única forma de
+      alterar uma coordenada por decisão humana — manifesto versionado, com
+      veredito `corrigir` (coord nova + evidências com fonte/URL/data) ou
+      `documentar` (parecer sem mudar coordenada). O pipeline valida o manifesto
+      em falha-dura, aplica e RE-VALIDA (PIP/bbox) as coords revisadas; o sha256
+      do manifesto entra em `fontes['revisoes_manuais']` → `_gerado_em` (proteção
+      contra catálogo defasado). A coordenada original TSE fica preservada em
+      `obs`. Testado por `test/geo_ref_check.py` §8 e `test/geo_verify.js` §8.
     - O app consome o catálogo sem fazer geocoding em runtime (fetch estático de
-      `data/geo_loc/`); sem catálogo, cai no modo ilustrativo declarado.
+      `data/geo_loc/`); sem catálogo, o app entra em estado declarado de
+      georreferenciamento **indisponível** (sem pontos sintéticos por padrão; totais e
+      choropleth preservados) e o modo ilustrativo só é exibido por escolha explícita
+      (botão "Modo ilustrativo (sem catálogo)").
 
 ## Testes (Node, sem dependências)
 
@@ -130,7 +142,8 @@ node test/geo_semantics.js # correção geográfica: join TSE→IBGE (295/295), 
 node test/geo_verify.js    # catálogo georreferenciado: integridade, PIP próprio, plausibilidade
                            # por cidade, re-derivação do registro-fonte (TSE/OSM no cache),
                            # independência de candidato/cargo, front (marcadores=locais,
-                           # modo ilustrativo separado, fallback sem catálogo)
+                           # modo ilustrativo separado, fallback sem catálogo: estado
+                           # indisponível + ilustrativo por escolha explícita)
 node test/tse_e2e.js       # zip oficial TSE -> parser JS vs dataset publicado (requer /tmp/tse_sc.zip)
 python3 test/geo_pbf_roundtrip.py # leitor PBF (roundtrip contra o proto oficial)
 python3 test/geo_ref_check.py     # catálogo publicado: schema 16 colunas, 295 municípios,

@@ -429,18 +429,23 @@
         }
       }
     } else {
-      // MODO ILUSTRATIVO (sem catálogo): posição determinística da
-      // identidade da seção dentro do polígono do município (comportamento
-      // legado; a UI sinaliza explicitamente que é ilustrativo).
-      for (const g of [...munSections.keys()].sort()) {
-        const rings = ringsByGeo.get(g);
-        const sects = munSections.get(g);
-        for (const s of sects) {
-          const p = Core.placeSection(rings, parseInt(g, 10), s.zona, s.secao);
-          dots.push({ x: proj.P(p[0], p[1])[0], y: proj.P(p[0], p[1])[1], r: Core.dotR(s.votos), kind: 'sec', s });
+      // SEM CATÁLOGO: georreferenciamento indisponível. Por padrão NENHUM
+      // ponto sintético é desenhado (estado declarado; choropleth, rótulos e
+      // totais permanecem). O modo ilustrativo (posição determinística da
+      // identidade da seção no polígono do município) só é exibido por
+      // escolha explícita do usuário (botão "Modo ilustrativo"), como
+      // círculos ocos tracejados — nunca confundível com marcador verificado.
+      if (showIllus) {
+        for (const g of [...munSections.keys()].sort()) {
+          const rings = ringsByGeo.get(g);
+          const sects = munSections.get(g);
+          for (const s of sects) {
+            const p = Core.placeSection(rings, parseInt(g, 10), s.zona, s.secao);
+            dots.push({ x: proj.P(p[0], p[1])[0], y: proj.P(p[0], p[1])[1], r: Core.dotR(s.votos), kind: 'sec-ill', s });
+          }
         }
       }
-      nNoGeo = -1; // -1 = modo ilustrativo (sem catálogo)
+      nNoGeo = -1; // -1 = modo sem catálogo
     }
     const metaByName = new Map();
     for (const [m, v] of Object.entries(ds.mun)) if (tse2geo.has(m)) metaByName.set(tse2geo.get(m), titleCase(v.nome));
@@ -485,7 +490,9 @@
         ? 'Marcadores nos locais de votação com coordenada verificada (catálogo ' +
           (model.meta.eleicao ? 'das Eleições ' + model.meta.eleicao.split('·')[0].replace('Eleições ', '') : '') + ', coordenadas oficiais do TSE + validação INEP/OSM/TRE-SC); ' +
           (model.nNoGeo > 0 ? model.nNoGeo + ' seções sem coordenada não plotadas. ' : '')
-        : 'Posições ILUSTRATIVAS dentro do polígono do município (sem catálogo de coordenadas verificadas).');
+        : (showIllus
+          ? 'Posições ILUSTRATIVAS dentro do polígono do município (sem catálogo de coordenadas verificadas).'
+          : 'Sem marcadores de seção — georreferenciamento indisponível (sem catálogo de coordenadas verificadas); choropleth por município preservado.'));
     const parts = [];
     parts.push(`<svg id="map" viewBox="0 0 ${W2} ${H2}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${esc(aria)}" font-family="system-ui, -apple-system, sans-serif">`);
     parts.push(`<rect x="0" y="0" width="${W2}" height="${H2}" fill="${BG}"/>`);
@@ -543,7 +550,9 @@
     const sub = `${esc(m.eleicao ? m.eleicao + ' · ' : '')}${model.totalVotos.toLocaleString('pt-BR')} votos em ${model.nSec.toLocaleString('pt-BR')} seções · ${model.nMun} de ${model.nMunTotal} municípios · ` +
       (model.realMode
         ? `${model.nLoc} local(is) de votação com coordenada verificada` + (model.nNoGeo > 0 ? ` · ${model.nNoGeo} seção(ões) sem coordenada` : '')
-        : 'posições ilustrativas (sem catálogo de coordenadas verificadas)');
+        : (showIllus
+          ? 'posições ilustrativas (sem catálogo de coordenadas verificadas)'
+          : 'georreferenciamento indisponível (sem catálogo) — sem marcadores de seção'));
     $('hudTitle').innerHTML = `<div class="t">${titulo}</div><div class="s">${sub}</div>`;
     const sw = Array.from({ length: 8 }, (_, i) => {
       const t = i / 7;
@@ -551,7 +560,9 @@
     }).join('');
     const dotLegend = model.realMode
       ? `<div class="l2" style="margin-top:6px"><span class="d"></span><span>local de votação (verificado)</span><span style="flex:1"></span><span class="o"></span><span>ilustrativo (sem coordenada)</span></div>`
-      : `<div class="l2" style="margin-top:6px"><span class="d"></span><span>1 seção · posição ilustrativa (sem coordenada verificada)</span></div>`;
+      : showIllus
+        ? `<div class="l2" style="margin-top:6px"><span class="o"></span><span>1 seção · posição ILUSTRATIVA (sem coordenada verificada)</span></div>`
+        : `<div class="l2" style="margin-top:6px"><span>sem marcadores de seção — georreferenciamento indisponível</span></div>`;
     $('hudLegend').innerHTML =
       `<div class="l1">votos por município:</div>` +
       `<svg width="120" height="9">${sw}</svg>` +
@@ -592,8 +603,10 @@
     if (model.ambiguous.length) msgs.push(`${model.ambiguous.length} nome(s) ambíguo(s) na malha — uso o primeiro correspondente.`);
     if (model.realMode) {
       if (model.nNoGeo > 0) msgs.push(`${model.nNoGeo} seção(ões) sem coordenada verificada não estão no mapa — os totais preservam essas seções (use “modo ilustrativo” para visualizá-las com posição aproximada).`);
+    } else if (showIllus) {
+      msgs.push('Sem catálogo de coordenadas verificadas (data/geo_loc) — posições ILUSTRATIVAS dentro do município (modo ilustrativo ativo por escolha sua).');
     } else {
-      msgs.push('Sem catálogo de coordenadas verificadas (data/geo_loc) — posições ILUSTRATIVAS dentro do município.');
+      msgs.push('Catálogo de georreferenciamento (data/geo_loc) indisponível: nenhuma coordenada verificada foi carregada e nenhum ponto sintético é desenhado. Votos e choropleth por município permanecem; use “Modo ilustrativo” para posições aproximadas (ilustrativas).');
     }
     if (msgs.length) { box.innerHTML = msgs.map(esc).join('<br>'); box.hidden = false; }
     else box.hidden = true;
@@ -603,8 +616,11 @@
     const b = $('btnIllus');
     if (!b) return;
     const n = model && model.realMode ? model.nNoGeo : 0;
-    b.hidden = !(model && model.realMode);
-    b.textContent = (showIllus ? '✓ ' : '') + 'Sem coordenada: modo ilustrativo' + (n > 0 ? ` (${n})` : '');
+    const noCatalog = model && !model.realMode;
+    b.hidden = !model || (model.realMode && n === 0);
+    b.textContent = noCatalog
+      ? (showIllus ? '✓ ' : '') + 'Modo ilustrativo (sem catálogo)' + (showIllus ? ' — ATIVO' : '')
+      : (showIllus ? '✓ ' : '') + 'Sem coordenada: modo ilustrativo' + (n > 0 ? ` (${n})` : '');
     b.classList.toggle('active', showIllus);
     b.setAttribute('aria-pressed', String(showIllus));
   }
@@ -767,7 +783,7 @@
       showError('Falha ao processar os dados (detalhe técnico: ' + e.message + ').');
       return false;
     }
-    if (!model.dots.length) {
+    if (model.nMun === 0) {
       showError('Nenhum município reconhecido na malha de SC — verifique os códigos/nomes no campo "mun".');
       return false;
     }
@@ -889,6 +905,8 @@
       if (model) {
         model.dots = buildModel(modelSrcCache).dots;
         renderMap();
+        renderHud();
+        renderWarnings();
         updateIllusBtn();
       }
     });
