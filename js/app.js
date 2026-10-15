@@ -16,6 +16,39 @@
   let geo = null, geoByName = null, feats = null, ringsByGeo = null, proj = null;
   let model = null;       // dataset processado
   let rawJson = null;     // objeto original carregado (para exportar)
+  let modelSrcCache = null; // último ds parseado (rebuild no toggle ilustrativo)
+
+  // ---- catálogo de georreferenciamento (data/geo_loc) ----
+  // Coordenadas VERIFICADAS dos locais de votação (pipeline offline
+  // sync/geo_ref.py: TSE 2026 + TRE-SC + INEP/OSM). Sem o catálogo, o
+  // mapa cai no modo ILUSTRATIVO (posição determinística no município)
+  // com aviso explícito — os dois modos nunca se misturam.
+  const GEO_BASE = 'data/geo_loc/';
+  let geoCat = null;         // {index, locais, sec2loc: Map} | null
+  let geoCatPromise = null;
+  let showIllus = false;     // desenhar seções sem coordenada (modo ilustrativo)
+  function loadGeoCatalog() {
+    if (geoCatPromise) return geoCatPromise;
+    geoCatPromise = (async () => {
+      try {
+        const r = await fetch(GEO_BASE + 'index.json');
+        if (!r.ok) return null;
+        const index = await r.json();
+        const [rl, rs] = await Promise.all([
+          fetch(GEO_BASE + (index.locais || 'locais.json')),
+          fetch(GEO_BASE + (index.secao2local || 'secoes.json'))
+        ]);
+        if (!rl.ok || !rs.ok) return null;
+        const lj = await rl.json();
+        const sj = await rs.json();
+        const sec2loc = new Map();
+        for (const row of sj.secao2local) sec2loc.set(row[0] + '/' + row[1] + '/' + row[2], row[3]);
+        geoCat = { index, locais: lj.locais, sec2loc };
+      } catch (e) { /* catálogo indisponível -> modo ilustrativo */ }
+      return geoCat;
+    })();
+    return geoCatPromise;
+  }
 
   // ---- dados oficiais TSE (download no navegador, cache IndexedDB) ----
   const TSE_BASE = 'https://cdn.tse.jus.br/estatistica/sead/odsele/votacao_secao/';
@@ -333,6 +366,13 @@
   }
   function buildModel(ds) {
     const { tse2geo, unmatched, ambiguous } = Core.mapTseToGeo(ds.mun, geoByName);
+    const realMode = geoCat != null;
+    // locIdx por seção: -1 = sem coordenada verificada; -2 = sem catálogo
+    for (const s of ds.sections) {
+      s.locIdx = realMode
+        ? (geoCat.sec2loc.has(s.muni + '/' + s.zona + '/' + s.secao) ? geoCat.sec2loc.get(s.muni + '/' + s.zona + '/' + s.secao) : -1)
+        : -2;
+    }
     const munVotes = new Map();
     for (const [m, v] of Object.entries(ds.mun)) if (tse2geo.has(m)) munVotes.set(tse2geo.get(m), v.votos);
     let maxmun = 0, maxMunKey = '';
@@ -347,18 +387,60 @@
       if (!munSections.has(g)) munSections.set(g, []);
       munSections.get(g).push(s);
     }
-    // 1 ponto por seção, em posição ILUSTRATIVA e determinística dentro do
-    // polígono do município (identidade da seção = muni IBGE + zona + seção).
-    // O TSE não publica coordenadas das seções — o ponto NÃO é o endereço
-    // real (ver README: "Semântica geográfica do mapa").
+    // MODO REAL (catálogo data/geo_loc presente): 1 marcador por LOCAL DE
+    // VOTAÇÃO, na coordenada verificada do catálogo (seções do mesmo local
+    // coincidem; o marcador agrega as seções). Sem catálogo: 1 ponto por
+    // seção em posição ILUSTRATIVA determinística (identidade da seção =
+    // muni IBGE + zona + seção) — o modo é declarado na UI (aria/legenda/
+    // aviso) e nunca se mistura com marcadores verificados (ver README:
+    // "Semântica geográfica do mapa").
     const dots = [];
-    for (const g of [...munSections.keys()].sort()) {
-      const rings = ringsByGeo.get(g);
-      const sects = munSections.get(g);
-      for (const s of sects) {
-        const p = Core.placeSection(rings, parseInt(g, 10), s.zona, s.secao);
-        dots.push({ x: proj.P(p[0], p[1])[0], y: proj.P(p[0], p[1])[1], r: Core.dotR(s.votos), s });
+    let nNoGeo = 0;
+    if (realMode) {
+      // MODO REAL: 1 marcador por LOCAL DE VOTAÇÃO (coordenada verificada).
+      // Seções sem coordenada não são plotadas (contadas em nNoGeo).
+      const byLoc = new Map();
+      for (const s of ds.sections) {
+        if (s.locIdx < 0) { nNoGeo++; continue; }
+        let m = byLoc.get(s.locIdx);
+        if (!m) {
+          const L = geoCat.locais[s.locIdx];
+          const [lon, lat] = L[8];
+          m = { i: s.locIdx, x: proj.P(lon, lat)[0], y: proj.P(lon, lat)[1], votes: 0, secs: [] };
+          byLoc.set(s.locIdx, m);
+        }
+        m.votes += s.votos;
+        m.secs.push(s);
       }
+      model_nLoc = byLoc.size;
+      for (const m of [...byLoc.values()].sort((a, b) => b.votes - a.votes)) {
+        dots.push({ x: m.x, y: m.y, r: Core.dotR(m.votes), kind: 'loc', loc: m });
+      }
+      // opcional: seções sem coordenada em MODO ILUSTRATIVO (estilo
+      // distinto: círculo oco — nunca confundível com marcador verificado)
+      if (showIllus) {
+        const illus = ds.sections.filter(s => s.locIdx < 0)
+          .sort((a, b) => (a.muni + a.zona + a.secao) < (b.muni + b.zona + b.secao) ? -1 : 1);
+        for (const s of illus) {
+          const g = tse2geo.get(s.muni);
+          if (!g) continue;
+          const p = Core.placeSection(ringsByGeo.get(g), parseInt(g, 10), s.zona, s.secao);
+          dots.push({ x: proj.P(p[0], p[1])[0], y: proj.P(p[0], p[1])[1], r: Core.dotR(s.votos), kind: 'sec-ill', s });
+        }
+      }
+    } else {
+      // MODO ILUSTRATIVO (sem catálogo): posição determinística da
+      // identidade da seção dentro do polígono do município (comportamento
+      // legado; a UI sinaliza explicitamente que é ilustrativo).
+      for (const g of [...munSections.keys()].sort()) {
+        const rings = ringsByGeo.get(g);
+        const sects = munSections.get(g);
+        for (const s of sects) {
+          const p = Core.placeSection(rings, parseInt(g, 10), s.zona, s.secao);
+          dots.push({ x: proj.P(p[0], p[1])[0], y: proj.P(p[0], p[1])[1], r: Core.dotR(s.votos), kind: 'sec', s });
+        }
+      }
+      nNoGeo = -1; // -1 = modo ilustrativo (sem catálogo)
     }
     const metaByName = new Map();
     for (const [m, v] of Object.entries(ds.mun)) if (tse2geo.has(m)) metaByName.set(tse2geo.get(m), titleCase(v.nome));
@@ -379,14 +461,17 @@
     }
     labels.sort((a, b) => b.v - a.v);
     const totalVotos = ds.total || ds.sections.reduce((a, s) => a + s.votos, 0);
+    const nLoc = realMode ? model_nLoc : 0;
     return {
       meta: ds.meta, tse2geo, unmatched, ambiguous, munVotes, maxmun, maxMunNome,
       dots, labels, totalVotos,
       nSec: ds.sections.length,
       nMun: tse2geo.size,
-      nMunTotal: geo.features.length
+      nMunTotal: geo.features.length,
+      realMode, nNoGeo, nLoc
     };
   }
+  let model_nLoc = 0; // contagem de locais distintos do último build
 
   // ---------------- construção do SVG ----------------
   function svgParts(withTitles) {
@@ -395,8 +480,12 @@
     const aria = (m.candidato ? m.candidato + (m.numero ? ' (' + m.numero + ')' : '') + ' — ' : '') +
       (m.cargo || 'seções com voto') + ', Santa Catarina. ' +
       model.totalVotos.toLocaleString('pt-BR') + ' votos em ' + model.nSec.toLocaleString('pt-BR') +
-      ' seções, ' + model.nMun + ' de ' + model.nMunTotal + ' municípios. Cada ponto = 1 seção com voto; ' +
-      'posições ilustrativas dentro do polígono do município (o TSE não publica coordenadas das seções).';
+      ' seções, ' + model.nMun + ' de ' + model.nMunTotal + ' municípios. ' +
+      (model.realMode
+        ? 'Marcadores nos locais de votação com coordenada verificada (catálogo ' +
+          (model.meta.eleicao ? 'das Eleições ' + model.meta.eleicao.split('·')[0].replace('Eleições ', '') : '') + ', coordenadas oficiais do TSE + validação INEP/OSM/TRE-SC); ' +
+          (model.nNoGeo > 0 ? model.nNoGeo + ' seções sem coordenada não plotadas. ' : '')
+        : 'Posições ILUSTRATIVAS dentro do polígono do município (sem catálogo de coordenadas verificadas).');
     const parts = [];
     parts.push(`<svg id="map" viewBox="0 0 ${W2} ${H2}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${esc(aria)}" font-family="system-ui, -apple-system, sans-serif">`);
     parts.push(`<rect x="0" y="0" width="${W2}" height="${H2}" fill="${BG}"/>`);
@@ -411,11 +500,31 @@
       }
     }
     model.dots.forEach((dt, i) => {
-      const title = withTitles
-        ? `<title>Seção ${esc(dt.s.secao)} · Zona ${esc(dt.s.zona)} — ${esc(dt.s.muniNome)}\n${dt.s.votos} voto(s)\nLocal: ${esc(dt.s.local)}</title>`
-        : '';
-      const attrs = withTitles ? '' : ` class="dot" data-i="${i}"`;
-      parts.push(`<circle${attrs} cx="${dt.x}" cy="${dt.y}" r="${dt.r}" fill="${DOT}" fill-opacity="0.9" stroke="${DOT_ED}" stroke-width="0.5" vector-effect="non-scaling-stroke">${title}</circle>`);
+      let title = '';
+      if (dt.kind === 'loc') {
+        // linha do catálogo: [i, mun_tse, ibge, mun_nome, nome, end,
+        // zonas, secoes, [lon,lat], fonte, match, conf, status, ref]
+        const L = geoCat.locais[dt.loc.i];
+        const nomeL = titleCase(L[4]);
+        const endL = L[5] ? ' · ' + L[5] : '';
+        const srcL = L[9] ? ' · ' + L[9] : '';
+        const n = dt.loc.secs.length;
+        title = withTitles
+          ? `<title>Local: ${esc(nomeL)}${endL}\n${esc(titleCase(L[3]))}\n${n} seção${n === 1 ? '' : 'ões'} · ${dt.loc.votos} voto(s)\nCoordenada verificada${srcL}</title>`
+          : '';
+      } else {
+        const s = dt.s;
+        title = withTitles
+          ? `<title>Seção ${esc(s.secao)} · Zona ${esc(s.zona)} — ${esc(s.muniNome)}\n${s.votos} voto(s)\nLocal: ${esc(s.local)}\nPosição ilustrativa (sem coordenada verificada)</title>`
+          : '';
+      }
+      if (dt.kind === 'sec-ill') {
+        const attrs = withTitles ? '' : ` class="dot dot-ill" data-i="${i}"`;
+        parts.push(`<circle${attrs} cx="${dt.x}" cy="${dt.y}" r="${dt.r}" fill="none" stroke="${ACCENT}" stroke-width="1" stroke-dasharray="2 1.5" vector-effect="non-scaling-stroke">${title}</circle>`);
+      } else {
+        const attrs = withTitles ? '' : ` class="dot" data-i="${i}"`;
+        parts.push(`<circle${attrs} cx="${dt.x}" cy="${dt.y}" r="${dt.r}" fill="${DOT}" fill-opacity="0.9" stroke="${DOT_ED}" stroke-width="0.5" vector-effect="non-scaling-stroke">${title}</circle>`);
+      }
     });
     for (const lb of model.labels) {
       parts.push(`<text class="lbl" x="${lb.x}" y="${lb.y - 4}" text-anchor="middle" font-size="11" font-weight="600" fill="${FG}" stroke="${BG}" stroke-width="3" paint-order="stroke">${esc(lb.nome)}</text>`);
@@ -431,16 +540,23 @@
     const titulo = m.candidato
       ? `${esc(m.candidato)}${m.numero ? ` (${esc(m.numero)})` : ''} — ${esc(m.cargo || 'Candidata/o')} · Santa Catarina`
       : 'Seções com voto · Santa Catarina';
-    const sub = `${esc(m.eleicao ? m.eleicao + ' · ' : '')}${model.totalVotos.toLocaleString('pt-BR')} votos em ${model.nSec.toLocaleString('pt-BR')} seções · ${model.nMun} de ${model.nMunTotal} municípios · cada ponto = 1 seção com voto`;
+    const sub = `${esc(m.eleicao ? m.eleicao + ' · ' : '')}${model.totalVotos.toLocaleString('pt-BR')} votos em ${model.nSec.toLocaleString('pt-BR')} seções · ${model.nMun} de ${model.nMunTotal} municípios · ` +
+      (model.realMode
+        ? `${model.nLoc} local(is) de votação com coordenada verificada` + (model.nNoGeo > 0 ? ` · ${model.nNoGeo} seção(ões) sem coordenada` : '')
+        : 'posições ilustrativas (sem catálogo de coordenadas verificadas)');
     $('hudTitle').innerHTML = `<div class="t">${titulo}</div><div class="s">${sub}</div>`;
     const sw = Array.from({ length: 8 }, (_, i) => {
       const t = i / 7;
       return `<rect x="${i * 15}" y="0" width="15" height="9" fill="${ACCENT}" fill-opacity="${Math.round((0.12 + 0.73 * t) * 1000) / 1000}"/>`;
     }).join('');
+    const dotLegend = model.realMode
+      ? `<div class="l2" style="margin-top:6px"><span class="d"></span><span>local de votação (verificado)</span><span style="flex:1"></span><span class="o"></span><span>ilustrativo (sem coordenada)</span></div>`
+      : `<div class="l2" style="margin-top:6px"><span class="d"></span><span>1 seção · posição ilustrativa (sem coordenada verificada)</span></div>`;
     $('hudLegend').innerHTML =
       `<div class="l1">votos por município:</div>` +
       `<svg width="120" height="9">${sw}</svg>` +
-      `<div class="l2"><span>0</span><span class="d"></span><span>1 seção</span><span style="flex:1"></span><span>${model.maxmun.toLocaleString('pt-BR')}${model.maxMunNome ? ' (' + esc(model.maxMunNome) + ')' : ''}</span></div>`;
+      `<div class="l2"><span>0</span><span class="d"></span><span>1 seção</span><span style="flex:1"></span><span>${model.maxmun.toLocaleString('pt-BR')}${model.maxMunNome ? ' (' + esc(model.maxMunNome) + ')' : ''}</span></div>` +
+      dotLegend;
   }
   function renderChips() {
     const m = model.meta;
@@ -455,6 +571,11 @@
       ['Seções com voto', model.nSec.toLocaleString('pt-BR')],
       ['Municípios', `${model.nMun} de ${model.nMunTotal}`]
     ];
+    if (model.realMode) {
+      const pct = model.nSec ? Math.round(100 * (model.nSec - Math.max(0, model.nNoGeo)) / model.nSec) : 100;
+      metrics.push(['Locais verificados', String(model.nLoc)]);
+      metrics.push(['Seções georreferenciadas', pct + '%']);
+    }
     const chip = (k, v, metric) =>
       `<span class="chip${metric ? ' metric' : ''}"><span class="k">${esc(k)}</span> ${esc(v)}</span>`;
     $('chips').innerHTML =
@@ -469,11 +590,24 @@
       msgs.push(`${model.unmatched.length} município(s) sem correspondência na malha (votos não plotados): ${nomes}${model.unmatched.length > 8 ? '…' : ''}`);
     }
     if (model.ambiguous.length) msgs.push(`${model.ambiguous.length} nome(s) ambíguo(s) na malha — uso o primeiro correspondente.`);
+    if (model.realMode) {
+      if (model.nNoGeo > 0) msgs.push(`${model.nNoGeo} seção(ões) sem coordenada verificada não estão no mapa — os totais preservam essas seções (use “modo ilustrativo” para visualizá-las com posição aproximada).`);
+    } else {
+      msgs.push('Sem catálogo de coordenadas verificadas (data/geo_loc) — posições ILUSTRATIVAS dentro do município.');
+    }
     if (msgs.length) { box.innerHTML = msgs.map(esc).join('<br>'); box.hidden = false; }
     else box.hidden = true;
   }
 
-  // ---------------- render do mapa + zoom/pan ----------------
+  function updateIllusBtn() {
+    const b = $('btnIllus');
+    if (!b) return;
+    const n = model && model.realMode ? model.nNoGeo : 0;
+    b.hidden = !(model && model.realMode);
+    b.textContent = (showIllus ? '✓ ' : '') + 'Sem coordenada: modo ilustrativo' + (n > 0 ? ` (${n})` : '');
+    b.classList.toggle('active', showIllus);
+    b.setAttribute('aria-pressed', String(showIllus));
+  }
   function renderMap() {
     const { body, W2, H2 } = svgParts(false);
     const box = $('mapBox');
@@ -555,15 +689,36 @@
       resetView();
     });
 
-    // tooltip
-    function showTip(s, cx, cy) {
+    // tooltip (por tipo de marcador)
+    function tipSec(s, illusNote) {
       const end = s.end ? `<div class="m">${esc(s.end)}</div>` : '';
-      tip.innerHTML =
-        `<div class="h">Seção ${esc(s.secao)} · Zona ${esc(s.zona)}</div>` +
+      return `<div class="h">Seção ${esc(s.secao)} · Zona ${esc(s.zona)}</div>` +
         `<div class="muni">${esc(s.muniNome)}</div>` +
         `<div class="m">${esc(s.local)}</div>${end}` +
-        `<div class="tip-note">posição ilustrativa dentro do município (o TSE não publica coordenadas)</div>` +
+        (illusNote ? `<div class="tip-note">${illusNote}</div>` : '') +
         `<div class="v">${s.votos} ${s.votos === 1 ? 'voto' : 'votos'}</div>`;
+    }
+    function tipLoc(m) {
+      const L = geoCat.locais[m.i];
+      const linhas = m.secs.slice(0, 8).map(s =>
+        `<div class="m">seção ${esc(s.secao)} (zona ${esc(s.zona)}) — ${s.votos} voto(s)</div>`).join('');
+      const mais = m.secs.length > 8 ? `<div class="m">… e mais ${m.secs.length - 8} seção(ões)</div>` : '';
+      const src = L[9] ? ' · ' + esc(L[9]) : '';
+      const edge = L[12] === 'edge' ? '<div class="tip-note">próximo da fronteira do município (validado)</div>' : '';
+      return `<div class="h">${esc(titleCase(L[4]))}</div>` +
+        `<div class="muni">${esc(titleCase(L[3]))}</div>` +
+        (L[5] ? `<div class="m">${esc(L[5])}</div>` : '') +
+        `<div class="m">zona(s): ${esc(L[6].map(z => 'Z' + z).join(', '))}</div>` +
+        linhas + mais +
+        `<div class="tip-note">coordenada verificada${src}</div>` + edge +
+        `<div class="v">${m.votes} ${m.votes === 1 ? 'voto' : 'votos'} em ${m.secs.length} seção(ões)</div>`;
+    }
+    function showTip(dt, cx, cy) {
+      tip.innerHTML = dt.kind === 'loc'
+        ? tipLoc(dt.loc)
+        : tipSec(dt.s, dt.kind === 'sec-ill'
+            ? 'posição ILUSTRATIVA — sem coordenada verificada'
+            : 'posição ilustrativa dentro do município (o TSE não publica coordenadas)');
       tip.style.display = 'block';
       const bw = tip.offsetWidth, bh = tip.offsetHeight;
       let x = cx + 14, y = cy + 14;
@@ -574,13 +729,13 @@
     svg.addEventListener('mousemove', ev => {
       if (drag) return;
       const t = ev.target;
-      if (t.classList && t.classList.contains('dot')) showTip(model.dots[+t.dataset.i].s, ev.clientX, ev.clientY);
+      if (t.classList && t.classList.contains('dot')) showTip(model.dots[+t.dataset.i], ev.clientX, ev.clientY);
       else if (tip.style.display === 'block') tip.style.display = 'none';
     });
     svg.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
     svg.addEventListener('click', ev => {
       const t = ev.target;
-      if (t.classList && t.classList.contains('dot')) showTip(model.dots[+t.dataset.i].s, ev.clientX, ev.clientY);
+      if (t.classList && t.classList.contains('dot')) showTip(model.dots[+t.dataset.i], ev.clientX, ev.clientY);
       else if (tip.style.display === 'block') tip.style.display = 'none';
     });
   }
@@ -601,6 +756,9 @@
       showError('Falha ao carregar a malha municipal de SC (data/geo_sc_municipios.json) — tente novamente.');
       return false;
     }
+    await loadGeoCatalog(); // null = catálogo indisponível (modo ilustrativo)
+    showIllus = false;
+    updateIllusBtn();
     const ds = Core.parseDataset(obj);
     if (!ds.ok) { showError(ds.errors.join(' ')); return false; }
     try {
@@ -614,6 +772,7 @@
       return false;
     }
     rawJson = obj;
+    modelSrcCache = ds;
     $('dropZone').classList.add('hidden');
     $('results').hidden = false;
     $('fileActions').hidden = false;
@@ -621,6 +780,7 @@
     renderWarnings();
     renderHud();
     renderMap();
+    updateIllusBtn();
     return true;
   }
   function handleFile(file) {
@@ -724,6 +884,14 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
     $('tseCancel').addEventListener('click', () => { if (tseAbort) tseAbort.abort(); });
+    $('btnIllus').addEventListener('click', () => {
+      showIllus = !showIllus;
+      if (model) {
+        model.dots = buildModel(modelSrcCache).dots;
+        renderMap();
+        updateIllusBtn();
+      }
+    });
     $('zoomIn').addEventListener('click', () => { if (mapZoom) mapZoom.zoomBy(1.4); });
     $('zoomOut').addEventListener('click', () => { if (mapZoom) mapZoom.zoomBy(1 / 1.4); });
     $('zoomReset').addEventListener('click', () => { if (mapZoom) mapZoom.resetView(); });

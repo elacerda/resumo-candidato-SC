@@ -7,7 +7,7 @@ function makeEl(tag) {
   return {
     tagName: tag, innerHTML: '', textContent: '', hidden: false, style: {}, dataset: {},
     value: '', files: [], children: [], listeners: {},
-    classList: { _s: new Set(), add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); }, contains(c) { return this._s.has(c); } },
+    classList: { _s: new Set(), add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); }, toggle(c, force) { const has = this._s.has(c); const want = force === undefined ? !has : force; if (want) this._s.add(c); else this._s.delete(c); }, contains(c) { return this._s.has(c); } },
     addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); },
     removeEventListener() {},
     setAttribute(k, v) { this.attrs = this.attrs || {}; this.attrs[k] = String(v); },
@@ -67,6 +67,17 @@ const init = doc.listeners['DOMContentLoaded'];
 if (!init) { console.error('FAIL: DOMContentLoaded não registrado'); process.exit(1); }
 
 const dots = () => (els.mapBox.innerHTML.match(/class="dot"/g) || []).length;
+// esperado: nº de LOCAIS verificados com >= 1 seção do 1333 (modo real;
+// 1 marcador por local — o app usa o catálogo data/geo_loc quando presente)
+const locais = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/geo_loc/locais.json'), 'utf8')).locais;
+const sec2loc = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/geo_loc/secoes.json'), 'utf8')).secao2local;
+const sample = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/1333_sc_2026.json'), 'utf8'));
+const idxOf = new Map(sec2loc.map(r => [r[0] + '/' + r[1] + '/' + r[2], r[3]]));
+const expLoc = new Set();
+for (const s of sample.sections) {
+  const i = idxOf.get(s.muni + '/' + s.zona + '/' + s.secao);
+  if (i !== undefined && i >= 0) expLoc.add(i);
+}
 let ok = true;
 function check(name, pass, extra) {
   console.log(pass ? '  ✓' : '  ✗', name, extra ? `(${extra})` : '');
@@ -78,7 +89,9 @@ function check(name, pass, extra) {
 
   // 1) exemplo (sanity: geo + pipeline)
   await els.btnSample.listeners.click[0]();
-  check('exemplo 1333 renderizado', dots() === 3397, String(dots()));
+  check('exemplo 1333 renderizado (1 marcador/local verificado)', dots() === expLoc.size,
+        `${dots()} vs ${expLoc.size}`);
+  check('aria: coordenada verificada', /aria-label="[^"]*verificada/.test(els.mapBox.innerHTML), '');
 
   // 2) fallback CDN (sem snapshot) + falha de rede -> erro amigável + retry
   blockIndex = true; // sem snapshot, o app vai ao CDN do TSE
@@ -103,8 +116,10 @@ function check(name, pass, extra) {
   els.tseNum.value = '1333';
   await els.btnTseMap.listeners.click[0]();
   await new Promise(r => setTimeout(r, 50));
-  check('mapa via snapshot (3397 dots)', dots() === 3397, String(dots()));
+  check('mapa via snapshot (mesmo nº de marcadores)', dots() === expLoc.size,
+        `${dots()} vs ${expLoc.size}`);
   check('HUD candidato 1333', els.hudTitle.innerHTML.includes('Andozio (1333)'), els.hudTitle.innerHTML.slice(0, 80));
+  check('HUD: locais verificados', els.hudTitle.innerHTML.includes('local(is) de votação com coordenada verificada'), '');
   check('chip de fonte cita snapshot', els.chips.innerHTML.includes('snapshot'), '');
   check('info do snapshot visível', els.tseInfo.hidden === false && els.tseInfo.textContent.includes('Snapshot'), '');
   check('status oculto após sucesso', els.tseStatus.hidden === true, '');

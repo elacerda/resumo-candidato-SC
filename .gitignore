@@ -1,1 +1,6 @@
 .impeccable/
+
+# georreferenciamento: downloads locais (re-geráveis via sync/geo_ref.py --fetch)
+cache/
+__pycache__/
+*.pyc

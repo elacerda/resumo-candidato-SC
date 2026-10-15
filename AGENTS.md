@@ -24,10 +24,14 @@ js/tse.js                     Parser stream do CSV oficial do TSE (funções pur
 js/app.js                     App: modos, snapshot, fallback CDN, render SVG, zoom/pan, export
 js/fflate.js                  fflate (MIT) — usar unzipSync
 data/geo_sc_municipios.json   Malha municipal de SC (IBGE, espelho tbrugz/geodata-br)
+data/geo_loc/                 Catálogo de georreferenciamento (locais + coords verificadas)
+sync/geo_ref.py               Pipeline offline de georreferenciamento (stdlib; determinístico)
+sync/geo_pbf.py               Leitor OSM PBF (stdlib) para o pipeline
 data/1333_sc_2026.json        Exemplo (J. Andózio, 1333, Dep. Federal, 2026)
 data/tse_2026/                Snapshot TSE (gerado por sync/tse_sync.py)
 sync/tse_sync.py              Gera o snapshot (stdlib only, determinístico)
 .github/workflows/tse-sync.yml  CI: re-gera snapshot (diário + manual + push no script)
+.github/workflows/geo-sync.yml  CI: re-gera catálogo data/geo_loc (diário + manual + push no pipeline)
 test/                         Testes Node (DOM shim; ver abaixo)
 ```
 
@@ -50,16 +54,20 @@ votos, local, end}], candidato?, numero?, cargo?, eleicao?, fonte?}`.
 
 ## Invariantes críticas (não quebrar)
 
-1. **MT19937 bit-idêntico ao CPython** (`core.js`): a posição de cada seção é um sorteio
-   determinístico e **uniforme** dentro da união dos anéis do município,
-   **seed = `sectionSeed(muni IBGE, zona, seção)`** (FNV-1a little-endian + finalizer
-   Murmur3-32). A IDENTIDADE da seção define o ponto — a mesma seção (município + zona +
-   seção) aparece SEMPRE no mesmo ponto, em qualquer candidato/cargo/dataset.
+1. **MT19937 bit-idêntico ao CPython** (`core.js`): usado apenas no **modo
+   ilustrativo** (fallback sem catálogo ou overlay "sem coordenada"), a posição de cada
+   seção é um sorteio determinístico e **uniforme** dentro da união dos anéis do
+   município, **seed = `sectionSeed(muni IBGE, zona, seção)`** (FNV-1a little-endian +
+   finalizer Murmur3-32). A IDENTIDADE da seção define o ponto — a mesma seção
+   (município + zona + seção) aparece SEMPRE no mesmo ponto, em qualquer
+   candidato/cargo/dataset.
    - 2º loop de `init_by_array`: multiplicador **1566083941**.
    - `random()` (res53): `(a * 67108864 + b) * (1/9007199254740992)`.
-   - Os pontos são **ILUSTRATIVOS**: o TSE não publica coordenadas das seções. A UI
-     (legenda/HUD/aria/tooltip/rodapé) deve manter o aviso "posição ilustrativa".
-   - Mudança aqui muda TODOS os pontos do mapa → rode `node test/geo_semantics.js`
+   - Posições MT19937 são **ILUSTRATIVAS**: nunca podem ser apresentadas como
+     localização real. Com catálogo `data/geo_loc`, os marcadores usam as coordenadas
+     verificadas dos LOCAIS de votação (invariante 10); o modo ilustrativo deve ficar
+     visual e textualmente separado (círculos ocos tracejados + rótulo "ilustrativo").
+   - Mudança aqui muda TODOS os pontos ilustrativos → rode `node test/geo_semantics.js`
      (inclui valores de referência gerados com CPython).
 2. **A posição do ponto NÃO depende da ordem do CSV**: é função da identidade da seção
    (muni IBGE + zona + seção). A ordem das seções no dataset continua = ordem do arquivo
@@ -80,10 +88,36 @@ votos, local, end}], candidato?, numero?, cargo?, eleicao?, fonte?}`.
    malha). Não inventar outro caminho.
 8. Snapshot: **só SC** em todos os cargos (inclusive Presidente).
 9. **Semântica geográfica honesta**: o choropleth (votos por município) é o dado
-   geográfico real; os pontos são distribuição **ilustrativa** de seções dentro do
-   município (o TSE não publica coordenadas de seções/locais). Nunca redefinir a
-   visualização como se os pontos fossem endereços reais — validado por
-   `test/geo_semantics.js`.
+   geográfico real. Com o catálogo `data/geo_loc`, os marcadores representam LOCAIS de
+   votação em coordenada **verificada** (oficial TSE; OSM só em lacunas). Sem catálogo,
+   o mapa é **ilustrativo** e a UI deve declará-lo. Nunca apresentar posição MT19937
+   como localização real, nem promover centroides de município/bairro/CEP a coordenada
+   de local — validado por `test/geo_semantics.js` e `test/geo_verify.js`.
+10. **Georreferenciamento (catálogo `data/geo_loc/`)**: a posição de uma seção é a
+    posição VERIFICADA do seu local de votação, nunca um ponto gerado dentro do
+    município.
+    - Fonte primária: TSE "Eleitorado por local de votação — 2026"
+      (`eleitorado_local_votacao_2026.zip`, CSV/UF, decimal com vírgula, sentinela
+      `-1,-1` = sem coordenada) — associação seção→local e coordenada oficiais.
+    - Identidade do local físico = **(código TSE do município, zona,
+      NR_LOCAL_VOTACAO)**; múltiplas seções podem compartilhar o local (e a
+      coordenada). O código do local NÃO é único globalmente — nunca usá-lo sem
+      (município, zona).
+    - Coordenadas pertencem ao LOCAL, nunca a candidato/cargo/dataset.
+    - OSM (extrato geofabrik `sul-latest.osm.pbf`) preenche lacunas sem coordenada
+      oficial (match de nome com unicidade no top tier) e verifica independentemente
+      (<=150 m confirma; >500 m conflito — flag, NUNCA realoca). INEP = validação
+      institucional apenas (sem coordenada desde 2023). TRE-SC = cross-check de
+      zona/endereço/CEP.
+    - Fora do polígono do município: <=500 m → status `edge` (publicado, com flag);
+      além → **não publicado**, reportado em `pendentes.json` para revisão.
+    - `cache/` (downloads) NÃO é commitado; `data/geo_loc/` e
+      `reports/geo_cobertura.json` sim (commitado pelo CI `geo-sync.yml`).
+    - Regerar: `python3 sync/geo_ref.py` (offline com cache; `--fetch` para baixar).
+      Determinístico: mesmas entradas → bytes idênticos (validado por
+      `test/geo_ref_check.py` §8).
+    - O app consome o catálogo sem fazer geocoding em runtime (fetch estático de
+      `data/geo_loc/`); sem catálogo, cai no modo ilustrativo declarado.
 
 ## Testes (Node, sem dependências)
 
@@ -93,11 +127,20 @@ node test/snapshot_app.js  # modo snapshot: mapa/lista por número + fallback CD
 node test/geo_semantics.js # correção geográfica: join TSE→IBGE (295/295), referências de cidades
                            # (Wikipedia), identidade/contenção/estabilidade dos pontos, agregados,
                            # semântica honesta na UI (DOM shim)
+node test/geo_verify.js    # catálogo georreferenciado: integridade, PIP próprio, plausibilidade
+                           # por cidade, re-derivação do registro-fonte (TSE/OSM no cache),
+                           # independência de candidato/cargo, front (marcadores=locais,
+                           # modo ilustrativo separado, fallback sem catálogo)
 node test/tse_e2e.js       # zip oficial TSE -> parser JS vs dataset publicado (requer /tmp/tse_sc.zip)
+python3 test/geo_pbf_roundtrip.py # leitor PBF (roundtrip contra o proto oficial)
+python3 test/geo_ref_check.py     # catálogo publicado: schema 16 colunas, 295 municípios,
+                                  # contenção PIP, re-derivação TSE + spot-checks geográficos,
+                                  # prisões, rebuild determinístico offline
 ```
 
 Após mexer em `js/`, `data/` ou `sync/`: rode **todos** (o `tse_e2e.js` precisa do zip TSE
-em `/tmp`: `tse_sc.zip`).
+em `/tmp`: `tse_sc.zip`; o `geo_ref_check.py` e o `geo_verify.js` precisam de `cache/`
+populada com o CSV TSE de locais e o JSON OSM — ver `sync/geo_ref.py --fetch`).
 
 ## Regenerando o snapshot
 

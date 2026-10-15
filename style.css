@@ -122,6 +122,9 @@ body {
   display: flex; align-items: center; gap: 5px; font-size: 9px; color: var(--muted); margin-top: 4px;
 }
 #hudLegend .d { width: 6px; height: 6px; border-radius: 50%; background: var(--dot); display: inline-block; flex: none; }
+#hudLegend .o { width: 8px; height: 8px; border-radius: 50%; border: 1.5px dashed var(--accent); display: inline-block; flex: none; }
+.dot-ill { cursor: pointer; }
+.dot-ill:hover { stroke: #ffffff; }
 /* ---------- tooltip ---------- */
 #tip {
   position: fixed; display: none; z-index: 10; max-width: 300px; pointer-events: none;

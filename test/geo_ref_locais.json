@@ -1,0 +1,203 @@
+{
+  "checks": [
+    {
+      "city": "Florianópolis",
+      "end": "RUA DA CAPELA, N. 1.234",
+      "lat": -27.67599796,
+      "local_code": "1554",
+      "lon": -48.48374762,
+      "muni": "81051",
+      "nome": "EEB JANUÁRIA TEIXEIRA DA ROCHA",
+      "secao": 283,
+      "zona": 13
+    },
+    {
+      "city": "Joinville",
+      "end": "RUA LAURO SCHROEDER. N. 777",
+      "lat": -26.23844448,
+      "local_code": "1236",
+      "lon": -48.80782208,
+      "muni": "81795",
+      "nome": "ESCOLA MUNICIPAL SENADOR CARLOS GOMES DE OLIVEIRA",
+      "secao": 240,
+      "zona": 105
+    },
+    {
+      "city": "Blumenau",
+      "end": "RUA MARIA BUGMANN, 88",
+      "lat": -26.9138182,
+      "local_code": "2305",
+      "lon": -49.1129778,
+      "muni": "80470",
+      "nome": "CENTRO DE EDUCAÇÃO INFANTIL ALBERTO STEIN",
+      "secao": 751,
+      "zona": 3
+    },
+    {
+      "city": "Chapecó",
+      "end": "RUA BORGES DE MEDEIROS, N. 1341 E",
+      "lat": -27.09157148,
+      "local_code": "1244",
+      "lon": -52.60992939,
+      "muni": "80810",
+      "nome": "ESCOLA DE EDUCAÇÃO BÁSICA PROFESSORA ZÉLIA SCHARF",
+      "secao": 344,
+      "zona": 35
+    },
+    {
+      "city": "Criciúma",
+      "end": "RUA CARLOS DA ROSA, N. 50",
+      "lat": -28.66451338,
+      "local_code": "1120",
+      "lon": -49.42472934,
+      "muni": "80896",
+      "nome": "ESCOLA DE EDUCAÇÃO BÁSICA PADRE MIGUEL GIACCA",
+      "secao": 149,
+      "zona": 92
+    },
+    {
+      "city": "Lages",
+      "end": "RUA JERUSALÉM, N. 525",
+      "lat": -27.79636119,
+      "local_code": "1066",
+      "lon": -50.28213313,
+      "muni": "81833",
+      "nome": "ESCOLA MUNICIPAL DE EDUCAÇÃO BÁSICA PROFESSORA FAUSTA RATH",
+      "secao": 451,
+      "zona": 21
+    },
+    {
+      "city": "São Miguel do Oeste",
+      "end": "RUA TIRADENTES, 989",
+      "lat": -26.74016442,
+      "local_code": "1260",
+      "lon": -53.51120459,
+      "muni": "83399",
+      "nome": "ESCOLA DE EDUCAÇÃO BÁSICA ALBERICO AZEVEDO",
+      "secao": 164,
+      "zona": 45
+    },
+    {
+      "city": "Xanxerê",
+      "end": "RUA SANTA TEREZINHA, 1069",
+      "lat": -26.8545037,
+      "local_code": "1490",
+      "lon": -52.3960509,
+      "muni": "83836",
+      "nome": "ESCOLA MUNICIPAL DE EDUCAÇÃO BÁSICA JANETE CASSOL",
+      "secao": 173,
+      "zona": 43
+    },
+    {
+      "city": "Marema",
+      "end": "RUA ORESTES E ALFREDO MAYER, S/N",
+      "lat": -26.80335182,
+      "local_code": "1015",
+      "lon": -52.6238985,
+      "muni": "82066",
+      "nome": "ESCOLA DE EDUCAÇÃO BÁSICA PROF. ZELINDO CARBONERA",
+      "secao": 64,
+      "zona": 48
+    },
+    {
+      "city": "Itapiranga",
+      "end": "RUA DA MATRIZ, 255",
+      "lat": -27.17118762,
+      "local_code": "1015",
+      "lon": -53.71246808,
+      "muni": "81655",
+      "nome": "ESCOLA DE EDUCAÇÃO BÁSICA SÃO VICENTE",
+      "secao": 52,
+      "zona": 65
+    },
+    {
+      "city": "Porto Belo",
+      "end": "RUA FRANCISCO SEVERIANO DOS SANTOS, 192",
+      "lat": -27.1594154,
+      "local_code": "1074",
+      "lon": -48.5627123,
+      "muni": "82651",
+      "nome": "ESCOLA PROFESSORA NAIR REBELLO - VILA NOVA",
+      "secao": 230,
+      "zona": 31
+    }
+  ],
+  "cities": [
+    {
+      "lat": -27.59694,
+      "lon": -48.54889,
+      "name": "Florianópolis"
+    },
+    {
+      "lat": -26.30389,
+      "lon": -48.84583,
+      "name": "Joinville"
+    },
+    {
+      "lat": -26.90889,
+      "lon": -49.0722,
+      "name": "Blumenau"
+    },
+    {
+      "lat": -27.09639,
+      "lon": -52.61833,
+      "name": "Chapecó"
+    },
+    {
+      "lat": -28.6778,
+      "lon": -49.37,
+      "name": "Criciúma"
+    },
+    {
+      "lat": -27.81583,
+      "lon": -50.32583,
+      "name": "Lages"
+    },
+    {
+      "lat": -26.725,
+      "lon": -53.51778,
+      "name": "São Miguel do Oeste"
+    },
+    {
+      "lat": -26.85583,
+      "lon": -52.39417,
+      "name": "Xanxerê"
+    },
+    {
+      "lat": -26.80667,
+      "lon": -52.62194,
+      "name": "Marema"
+    },
+    {
+      "lat": -27.16806,
+      "lon": -53.71028,
+      "name": "Itapiranga"
+    },
+    {
+      "lat": -27.15694,
+      "lon": -48.56833,
+      "name": "Porto Belo"
+    }
+  ],
+  "note": "Verificação geográfica INDEPENDENTE do catálogo: para cada spot-check, o ponto do local deve (1) estar dentro do polígono do seu município (tolerância 500 m na fronteira/ilha), (2) estar a < 30 km do centro da cidade. O mesmo (mun, zona, secao) deve mapear para a MESMA coordenada em qualquer candidato/cargo (identidade da seção).",
+  "prisons": [
+    {
+      "city": "Itajaí",
+      "local_code": "1813",
+      "muni": "81612",
+      "nome": "PRESÍDIO COMPLEXO PENITENCIARIO DO VALE DO ITAJAÍ",
+      "secao": 356,
+      "zona": 97
+    },
+    {
+      "city": "Caçador",
+      "local_code": "1767",
+      "muni": "80578",
+      "nome": "PRESÍDIO REGIONAL DE CAÇADOR",
+      "secao": 245,
+      "zona": 6
+    }
+  ],
+  "retrieved": "2026-10-14",
+  "source": "Arquivo oficial TSE 'Eleitorado por local de votação — 2026' (eleitorado_local_votacao_2026_SC.csv; DT_GERACAO 14/10/2026 06:29:16) — registros reais; cidades: pt.wikipedia.org (coordenadas de página)"
+}

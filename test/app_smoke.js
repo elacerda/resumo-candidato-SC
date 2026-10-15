@@ -6,7 +6,7 @@ function makeEl(tag) {
   return {
     tagName: tag, innerHTML: '', textContent: '', hidden: false, style: {}, dataset: {},
     value: '', files: [], children: [], listeners: {},
-    classList: { _s: new Set(), add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); }, contains(c) { return this._s.has(c); } },
+    classList: { _s: new Set(), add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); }, toggle(c, force) { const has = this._s.has(c); const want = force === undefined ? !has : force; if (want) this._s.add(c); else this._s.delete(c); }, contains(c) { return this._s.has(c); } },
     addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); },
     removeEventListener() {},
     setAttribute(k, v) { this.attrs = this.attrs || {}; this.attrs[k] = String(v); },
@@ -57,12 +57,13 @@ if (!init) { console.error('FAIL: DOMContentLoaded não registrado'); process.ex
   const svgHtml = els.mapBox.innerHTML;
   const nDots = (svgHtml.match(/class="dot"/g) || []).length;
   const checks = [
-    ['mapa renderizado (3397 dots)', nDots === 3397, `achou ${nDots}`],
+    ['mapa renderizado (3397 dots, modo ilustrativo sem catálogo)', nDots === 3397, `achou ${nDots}`],
+    ['aria declara ILUSTRATIVAS', /aria-label="[^"]*ILUSTRATIVAS/.test(svgHtml), ''],
     ['título HUD', els.hudTitle.innerHTML.includes('Ju Andózio (1333)') && els.hudTitle.innerHTML.includes('Deputada Federal'), ''],
     ['subtítulo com totais', els.hudTitle.innerHTML.includes('4.876 votos em 3.397 seções'), ''],
     ['chips', els.chips.innerHTML.includes('4.876') && els.chips.innerHTML.includes('224 de 295'), ''],
     ['legenda', els.hudLegend.innerHTML.includes('1.745 (Florianópolis)'), ''],
-    ['sem avisos', els.warnBox.hidden === true, ''],
+    ['aviso: posições ILUSTRATIVAS (sem catálogo)', !els.warnBox.hidden && /ILUSTRATIVAS/.test(els.warnBox.innerHTML), els.warnBox.innerHTML.slice(0, 80)],
     ['dropzone oculta', els.dropZone.classList.contains('hidden') === true, ''],
     ['fileActions visível', els.fileActions.hidden === false, '']
   ];

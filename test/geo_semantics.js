@@ -306,7 +306,7 @@ console.log('== 5) semântica honesta na UI ==');
     return {
       tagName: tag, innerHTML: '', textContent: '', hidden: false, style: {}, dataset: {},
       value: '', files: [], children: [], listeners: {},
-      classList: { _s: new Set(), add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); }, contains(c) { return this._s.has(c); } },
+      classList: { _s: new Set(), add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); }, toggle(c, force) { const has = this._s.has(c); const want = force === undefined ? !has : force; if (want) this._s.add(c); else this._s.delete(c); }, contains(c) { return this._s.has(c); } },
       addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); },
       removeEventListener() {},
       setAttribute(k, v) { this.attrs = this.attrs || {}; this.attrs[k] = String(v); },
@@ -356,14 +356,14 @@ console.log('== 5) semântica honesta na UI ==');
   check('exemplo renderizado (3397 dots)', nDots === 3397, `${nDots}`);
   const aria = /aria-label="([^"]*)"/.exec(svg);
   check('aria-label do SVG afirma posição ILUSTRATIVA',
-    !!aria && aria[1].includes('ilustrativa'), aria ? aria[1].slice(-110) : 'sem aria');
+    !!aria && /ilustrativ/i.test(aria[1]), aria ? aria[1].slice(-110) : 'sem aria');
   check('legenda no formato antigo (0 ● 1 seção … maxmun)',
     els.hudLegend.innerHTML.includes('>1 seção<') &&
     els.hudLegend.innerHTML.includes('1.745 (Florianópolis)') &&
     !els.hudLegend.innerHTML.includes('1 ponto = 1 seção'));
-  check('HUD no formato original (cada ponto = 1 seção com voto)',
-    els.hudTitle.innerHTML.includes('cada ponto = 1 seção com voto') &&
-    !els.hudTitle.innerHTML.includes('ilustrativa'));
+  check('HUD declara posições ilustrativas (sem catálogo)',
+    els.hudTitle.innerHTML.includes('posições ilustrativas') &&
+    !/coordenada verificada/i.test(els.hudTitle.innerHTML));
   const appSrc = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
   check('tooltip exibe nota de posição ilustrativa',
     appSrc.includes('tip-note') && /posição ilustrativa dentro do município/.test(appSrc));
