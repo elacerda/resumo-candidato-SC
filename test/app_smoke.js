@@ -16,7 +16,8 @@ function makeEl(tag) {
     getBoundingClientRect() { return { width: 1000, height: 700, left: 0, top: 0 }; },
     click() {}, appendChild(c) { this.children.push(c); }, remove() {},
     createSVGPoint() { return { x: 0, y: 0, matrixTransform() { return this; } }; },
-    getScreenCTM() { return null; }
+    getScreenCTM() { return null; },
+    scrollIntoView() {}, focus() {}, blur() {}
   };
 }
 const IDS = ['dropZone','results','fileActions','errBox','btnLoad','fileInput','btnSample','btnSample2','btnSvg','btnJson','chips','warnBox','mapBox','hudTitle','hudLegend','tip','btnTse','tsePanel','tseGoDrop','tseNum','btnTseList','btnTseMap','tseSel','tseStatus','tseStatusText','tseBar','tseSize','tseBig'];
@@ -64,10 +65,12 @@ if (!init) { console.error('FAIL: DOMContentLoaded não registrado'); process.ex
     ['subtítulo com totais', els.hudTitle.innerHTML.includes('4.876 votos em 3.397 seções'), ''],
     ['HUD declara indisponível (sem marcadores)', els.hudTitle.innerHTML.includes('georreferenciamento indisponível'), ''],
     ['chips', els.chips.innerHTML.includes('4.876') && els.chips.innerHTML.includes('224 de 295'), ''],
-    ['legenda', els.hudLegend.innerHTML.includes('1.745 (Florianópolis)'), ''],
+    ['legenda: escala log + max do município', els.hudLegend.innerHTML.includes('escala log') && els.hudLegend.innerHTML.includes('1.745 (Florianópolis)'), ''],
+    ['legenda: sem confluência marcador/escala (">1 seção<")', !els.hudLegend.innerHTML.includes('>1 seção<'), els.hudLegend.innerHTML.slice(0, 120)],
     ['aviso: catálogo indisponível (sem ponto sintético)', !els.warnBox.hidden && /indisponível/.test(els.warnBox.innerHTML), els.warnBox.innerHTML.slice(0, 80)],
     ['botão modo ilustrativo visível (escolha explícita)', els.btnIllus.hidden === false && els.btnIllus.textContent.includes('Modo ilustrativo (sem catálogo)'), els.btnIllus.textContent],
     ['dropzone oculta', els.dropZone.classList.contains('hidden') === true, ''],
+    ['painel TSE colapsado após carregar (mapa em primeiro lugar)', els.tsePanel.hidden === true, ''],
     ['fileActions visível', els.fileActions.hidden === false, '']
   ];
   let ok = true;

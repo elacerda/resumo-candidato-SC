@@ -17,7 +17,8 @@ function makeEl(tag) {
     getBoundingClientRect() { return { width: 1000, height: 700, left: 0, top: 0 }; },
     click() {}, appendChild(c) { this.children.push(c); }, remove() {},
     createSVGPoint() { return { x: 0, y: 0, matrixTransform() { return this; } }; },
-    getScreenCTM() { return null; }
+    getScreenCTM() { return null; },
+    scrollIntoView() {}, focus() {}, blur() {}
   };
 }
 const IDS = ['dropZone','results','fileActions','errBox','btnLoad','fileInput','btnSample','btnSample2',
@@ -119,7 +120,7 @@ function check(name, pass, extra) {
   check('mapa via snapshot (mesmo nº de marcadores)', dots() === expLoc.size,
         `${dots()} vs ${expLoc.size}`);
   check('HUD candidato 1333', els.hudTitle.innerHTML.includes('Andozio (1333)'), els.hudTitle.innerHTML.slice(0, 80));
-  check('HUD: locais verificados', els.hudTitle.innerHTML.includes('local(is) de votação com coordenada verificada'), '');
+  check('HUD: locais verificados (plural correto)', els.hudTitle.innerHTML.includes('locais de votação com coordenada verificada'), els.hudTitle.innerHTML.slice(0, 120));
   check('chip de fonte cita snapshot', els.chips.innerHTML.includes('snapshot'), '');
   check('info do snapshot visível', els.tseInfo.hidden === false && els.tseInfo.textContent.includes('Snapshot'), '');
   check('status oculto após sucesso', els.tseStatus.hidden === true, '');
@@ -130,6 +131,22 @@ function check(name, pass, extra) {
   const selHtml = els.tseSel.innerHTML;
   check('lista via snapshot (JULIANA ANDOZIO 1333)', selHtml.includes('JULIANA ANDOZIO') && selHtml.includes('(1333)'), '');
   check('lista em ordem de votos (top 1 primeiro)', selHtml.indexOf('2233') < selHtml.indexOf('1333'), '');
+  check('filtro visível com a lista', els.tseFilterRow.hidden === false && els.tseSel.hidden === false, '');
+  check('contagem de candidatos (253)', /253 candidatos/.test(els.tseFilterCount.textContent), els.tseFilterCount.textContent);
+  // filtro por nome (sem acento, case-insensitive)
+  els.tseFilter.value = 'andoz';
+  await els.tseFilter.listeners.input[0]();
+  const selFilt = els.tseSel.innerHTML;
+  check('filtro "andoz" mantém 1333', selFilt.includes('JULIANA ANDOZIO') && selFilt.includes('(1333)'), '');
+  check('filtro "andoz" reduz a lista', (selFilt.match(/<option/g) || []).length < 20, (selFilt.match(/<option/g) || []).length + ' opções');
+  check('contagem filtrada', /de 253/.test(els.tseFilterCount.textContent), els.tseFilterCount.textContent);
+  // filtro por número
+  els.tseFilter.value = '2233';
+  await els.tseFilter.listeners.input[0]();
+  check('filtro "2233" encontra o top 1', els.tseSel.innerHTML.includes('(2233)'), '');
+  // limpa o filtro (volta à lista completa)
+  els.tseFilter.value = '';
+  await els.tseFilter.listeners.input[0]();
 
   // 6) número ausente do snapshot -> rejeição instantânea (sem download)
   radioCargo.value = 'GOVERNADOR';

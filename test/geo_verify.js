@@ -407,7 +407,8 @@ console.log('== 9) front-end (DOM shim) ==');
       getBoundingClientRect() { return { width: 1000, height: 700, left: 0, top: 0 }; },
       click() {}, appendChild(c) { this.children.push(c); }, remove() {},
       createSVGPoint() { return { x: 0, y: 0, matrixTransform() { return this; } }; },
-      getScreenCTM() { return null; }
+      getScreenCTM() { return null; },
+      scrollIntoView() {}, focus() {}, blur() {}
     };
   }
   const IDS = ['dropZone', 'results', 'fileActions', 'errBox', 'btnLoad', 'fileInput', 'btnSample',
@@ -467,10 +468,14 @@ console.log('== 9) front-end (DOM shim) ==');
   check('sem ilustrativos por padrão (nNoGeo = ' + expNoGeo.size + ')', nIll === 0, String(nIll));
   const aria = /aria-label="([^"]*)"/.exec(svg);
   check('aria-label: coordenada verificada', !!aria && aria[1].includes('verificada'), aria ? aria[1].slice(-100) : '');
-  check('HUD: locais verificados + seções sem coordenada',
-    els.hudTitle.innerHTML.includes('local(is) de votação com coordenada verificada'));
-  check('legenda: verificado + ilustrativo',
-    els.hudLegend.innerHTML.includes('verificado') && els.hudLegend.innerHTML.includes('ilustrativo'));
+  check('HUD: locais verificados (plural correto)',
+    els.hudTitle.innerHTML.includes('locais de votação com coordenada verificada'));
+  check('legenda: marcador verificado + escala log',
+    els.hudLegend.innerHTML.includes('verificado') && els.hudLegend.innerHTML.includes('escala log'));
+  check('legenda: sem linha ilustrativa morta (nNoGeo=0 no 1333)',
+    !els.hudLegend.innerHTML.includes('ilustrativo'));
+  check('legenda: sem confluência marcador/escala (">1 seção<")',
+    !els.hudLegend.innerHTML.includes('>1 seção<'));
   if (expNoGeo.size > 0) {
     check('aviso: seções sem coordenada', /sem coordenada verificada/.test(els.warnBox.innerHTML), els.warnBox.innerHTML.slice(0, 80));
     check('botão modo ilustrativo visível com contagem',

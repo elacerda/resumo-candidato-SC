@@ -12,6 +12,18 @@
   const $ = id => document.getElementById(id);
   const esc = t => String(t == null ? '' : t)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  // Plural simples em pt-BR: pl(1, 'seção', 'seções') -> 'seção'.
+  const pl = (n, singular, plural) => (Number(n) === 1 ? singular : plural);
+  // prefers-reduced-motion: scroll suave e transições só quando o usuário não
+  // pediu redução de movimento.
+  const motionOK = () =>
+    !(typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const scrollBehavior = () => (motionOK() ? 'smooth' : 'auto');
+  // requestAnimationFrame (com fallback p/ testes Node): loteia a re-escala de
+  // marcadores durante pan/zoom contínuo (milhares de dots por frame).
+  const raf = typeof requestAnimationFrame === 'function'
+    ? requestAnimationFrame
+    : (fn) => setTimeout(fn, 16);
 
   let geo = null, geoByName = null, feats = null, ringsByGeo = null, proj = null;
   let model = null;       // dataset processado
@@ -61,6 +73,7 @@
   ];
   const tseMem = new Map();  // file -> {bytes, csv}
   let tseBusy = false;
+  let tseListFull = [];      // lista completa do cargo atual (ordem por votos)
   let tseAbort = null;      // AbortController do download em curso
   let tseRetryFn = null;   // última ação TSE (botão Tentar novamente)
   const IDB_NAME = 'resumo-candidato-cache', IDB_STORE = 'files';
@@ -196,6 +209,34 @@
     return TSE_CARGOS.find(c => c.id === document.querySelector('input[name="tseCargo"]:checked').value);
   }
   function mb(n) { return (n / 1048576).toFixed(1).replace('.', ',') + ' MB'; }
+
+  /**
+   * Preenche a lista de candidatos (sempre em ordem de votos, decrescente)
+   * aplicando o filtro por nome (sem acento, case-insensitive) ou número.
+   * Mantém a seleção anterior quando o candidato filtrado ainda existe.
+   *
+   * @param {string} filter texto do filtro (vazio = lista completa).
+   * @sideeffect popula #tseSel, mostra #tseFilterRow e atualiza a contagem.
+   */
+  function renderTseList(filter) {
+    const strip = x => String(x).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const q = strip(String(filter || '').trim());
+    const sel = $('tseSel');
+    const prev = sel.value;
+    const items = q
+      ? tseListFull.filter(x => x.numero.includes(q) || strip(x.nome).includes(q))
+      : tseListFull;
+    sel.innerHTML = items.map(x =>
+      `<option value="${x.numero}">${esc(x.nome)} (${x.numero}) — ${x.votos.toLocaleString('pt-BR')} votos</option>`
+    ).join('');
+    sel.hidden = false;
+    sel.size = Math.min(8, Math.max(1, items.length));
+    if (prev && items.some(x => x.numero === prev)) sel.value = prev;
+    // "N de T candidatos" (filtro) ou "T candidato(s)" (lista completa)
+    $('tseFilterCount').textContent =
+      (q ? items.length + ' de ' + tseListFull.length : tseListFull.length) +
+      ' ' + (q ? 'candidatos' : pl(tseListFull.length, 'candidato', 'candidatos'));
+  }
   async function tseList() {
     if (tseBusy) return;
     tseBusy = true;
@@ -209,15 +250,13 @@
       const c = idx && idx.cargos[cargo.id];
       if (c && c.candidatos && Object.keys(c.candidatos).length) {
         tseStatus('Montando a lista de candidatos…');
-        const list = Object.entries(c.candidatos)
+        // ordem explícita por votos: chaves numéricas de objeto JS iteram em
+        // ordem numérica, não de importância (invariante 5).
+        tseListFull = Object.entries(c.candidatos)
           .map(([numero, m]) => ({ numero, nome: m[0], votos: m[1] }))
           .sort((a, b) => b.votos - a.votos);
-        const sel = $('tseSel');
-        sel.innerHTML = list.map(x =>
-          `<option value="${x.numero}">${esc(x.nome)} (${x.numero}) — ${x.votos.toLocaleString('pt-BR')} votos</option>`
-        ).join('');
-        sel.hidden = false;
-        sel.size = Math.min(8, list.length);
+        $('tseFilterRow').hidden = false;
+        renderTseList('');
         tseHideStatus();
         return;
       }
@@ -232,12 +271,9 @@
       }, tseAbort.signal);
       tseStatus('Montando a lista de candidatos…');
       const list = await window.TseCore.listCandidates(window.TseCore.csvChunks(csv), cargo.id);
-      const sel = $('tseSel');
-      sel.innerHTML = list.map(x =>
-        `<option value="${x.numero}">${esc(x.nome)} (${x.numero}) — ${x.votos.toLocaleString('pt-BR')} votos</option>`
-      ).join('');
-      sel.hidden = false;
-      sel.size = Math.min(8, list.length);
+      tseListFull = list; // listCandidates já devolve em ordem de votos
+      $('tseFilterRow').hidden = false;
+      renderTseList('');
       tseHideStatus();
     } catch (e) {
       if (e && e.name === 'AbortError') { tseStatus('Download cancelado.'); return; }
@@ -266,12 +302,13 @@
         const ds = await snapDataset(cargo.id, numero);
         if (ds && ds.sections.length) {
           const nome = titleCase(ds.nome || '');
-          await loadDataset({
+          const ok = await loadDataset({
             total: ds.total, mun: ds.mun, sections: ds.sections,
             candidato: nome, numero, cargo: cargo.label,
             eleicao: eleicaoLabel(idx),
             fonte: 'TSE · snapshot de ' + new Date(idx.gerado_em).toLocaleDateString('pt-BR')
-          });
+          }, msg => { if (msg) tseStatus(msg); });
+          if (!ok) { tseStatus('Falha ao montar o mapa — a mensagem de erro está no bloco "Ou importe a sua tabela JSON", logo abaixo.'); return; }
           tseHideStatus();
           return;
         }
@@ -295,12 +332,13 @@
       const ds = await window.TseCore.candidateDataset(window.TseCore.csvChunks(csv), { cargo: cargo.id, numero });
       if (!ds.sections.length) { tseStatus('Este candidato não tem votos em seções de SC (' + cargo.label + ').'); return; }
       const nome = titleCase(ds.nome || '');
-      await loadDataset({
+      const ok = await loadDataset({
         total: ds.total, mun: ds.mun, sections: ds.sections,
         candidato: nome, numero, cargo: cargo.label,
         eleicao: eleicaoLabel(null, cargo.file),
         fonte: 'TSE · ' + cargo.file
-      });
+      }, msg => { if (msg) tseStatus(msg); });
+      if (!ok) { tseStatus('Falha ao montar o mapa — a mensagem de erro está no bloco "Ou importe a sua tabela JSON", logo abaixo.'); return; }
       tseHideStatus();
     } catch (e) {
       if (e && e.name === 'AbortError') { tseStatus('Download cancelado.'); return; }
@@ -339,9 +377,9 @@
     const ano = (idx && idx.eleicao) || (cargoFile && (cargoFile.match(/votacao_secao_(\d+)/) || [])[1]) || '2026';
     return 'Eleições ' + ano + ' · 1º turno';
   }
-  let drag = null;        // estado do pan
   let vb = null;          // viewBox atual
   let mapZoom = null;     // api de zoom exposta (botões +/−/⟲)
+  let mapGesture = null;  // gestos ativos do mapa atual (pan/pinch)
   const VB = { w: 0, h: 0 };
 
   // ---------------- carga da malha ----------------
@@ -361,8 +399,46 @@
   }
 
   // ---------------- modelo (mesma lógica do Python) ----------------
+  // Siglas institucionais que devem permanecer em maiúsculas nos nomes
+  // oficiais do TSE — ex.: "E.B.M." nunca pode virar "E.b.m.". Conjunto
+  // calibrado com os nomes de local de SC 2026 (catálogo data/geo_loc;
+  // conferir com node -e ao adicionar). Abreviações PONTILHADAS (PROF., DR.,
+  // LTDA., C.E.I., (SUBST.)…) são preservadas por regra, sem constar aqui.
+  const ACRONYMS = new Set(('EBM EEB EEM EEF EEE EB EE EMEB EMEF EMEI EMEFM EMEC EMEPA EJA ' +
+    'CEI CEIM CEIT CEJA CEU CEM CEMJ CEMEI CMEI CME CIEP CIEF CAIC CREI CDI CEF ' +
+    'CEFID CCE CTC CSE CFH CEART CTAI CCJ CDS CI ' +
+    'APAE UBS CRAS CREAS SCFV SENAI SENAC SESC IFSC UFSC UDESC IFC IEE UNC DNIT ' +
+    'CEDUP FAESC FAED FAOSC FUNEI FEPOL COHAB COC ESAG').split(' '));
+
+  /**
+   * Decide se um token é sigla/abreviação a preservar no caso original.
+   *
+   * @param {string} token token do nome (trecho entre espaços).
+   * @returns {boolean} true se o token mantém o caso original.
+   */
+  function isAcronym(token) {
+    const t = String(token || '').trim();
+    const letters = t.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ]/g, '');
+    if (letters.length < 2) return false;
+    if (t.includes('.')) return true; // abreviação pontilhada: PROF., E.B.M., C.E.I.
+    return ACRONYMS.has(letters.toUpperCase());
+  }
+
+  /**
+   * Capitaliza um nome oficial (o TSE entrega ASCII em maiúsculas),
+   * preservando siglas institucionais (EBM, EEB, EEF, CEI, …) e
+   * abreviações pontilhadas (PROF., E.B.M., DR.). O restante segue
+   * title-case por delimitador (espaço, '-', '/', '(').
+   *
+   * @param {string} s nome original (ex.: "E.B.M. ANTONIO X").
+   * @returns {string} nome capitalizado fiel ao original (ex.: "E.B.M. Antonio X").
+   */
   function titleCase(s) {
-    return String(s || '').toLowerCase().replace(/(^|[\s\-/(])\S/g, c => c.toUpperCase());
+    return String(s || '').split(/(\s+)/).map(tok =>
+      isAcronym(tok)
+        ? tok
+        : tok.toLowerCase().replace(/(^|[\s\-/(])\S/g, c => c.toUpperCase())
+    ).join('');
   }
   function buildModel(ds) {
     const { tse2geo, unmatched, ambiguous } = Core.mapTseToGeo(ds.mun, geoByName);
@@ -491,9 +567,14 @@
       model.totalVotos.toLocaleString('pt-BR') + ' votos em ' + model.nSec.toLocaleString('pt-BR') +
       ' seções, ' + model.nMun + ' de ' + model.nMunTotal + ' municípios. ' +
       (model.realMode
-        ? 'Marcadores nos locais de votação com coordenada verificada (catálogo ' +
-          (model.meta.eleicao ? 'das Eleições ' + model.meta.eleicao.split('·')[0].replace('Eleições ', '') : '') + ', coordenadas oficiais do TSE + validação INEP/OSM/TRE-SC); ' +
-          (model.nNoGeo > 0 ? model.nNoGeo + ' seções sem coordenada não plotadas. ' : '')
+        ? 'Marcadores nos locais de votação com coordenada verificada (' +
+          (model.meta.eleicao
+            ? 'catálogo das Eleições ' + model.meta.eleicao.split('·')[0].replace('Eleições ', '').trim() +
+              ' — coordenadas oficiais do TSE + validação INEP/OSM/TRE-SC'
+            : 'catálogo de coordenadas verificadas: oficiais do TSE + validação INEP/OSM/TRE-SC') +
+          '); ' +
+          (model.nNoGeo > 0 ? model.nNoGeo + ' ' + pl(model.nNoGeo, 'seção', 'seções') +
+            ' sem coordenada não plotad' + (model.nNoGeo === 1 ? 'a' : 'as') + '. ' : '')
         : (showIllus
           ? 'Posições ILUSTRATIVAS dentro do polígono do município (sem catálogo de coordenadas verificadas).'
           : 'Sem marcadores de seção — georreferenciamento indisponível (sem catálogo de coordenadas verificadas); choropleth por município preservado.'));
@@ -521,7 +602,7 @@
         const srcL = L[9] ? ' · ' + L[9] : '';
         const n = dt.loc.secs.length;
         title = withTitles
-          ? `<title>Local: ${esc(nomeL)}${endL}\n${esc(titleCase(L[3]))}\n${n} seção${n === 1 ? '' : 'ões'} · ${dt.loc.votos} voto(s)\nCoordenada verificada${srcL}</title>`
+          ? `<title>Local: ${esc(nomeL)}${endL}\n${esc(titleCase(L[3]))}\n${n} ${pl(n, 'seção', 'seções')} · ${dt.loc.votos} ${pl(dt.loc.votos, 'voto', 'votos')}\nCoordenada verificada${srcL}</title>`
           : '';
       } else {
         const s = dt.s;
@@ -551,26 +632,44 @@
     const titulo = m.candidato
       ? `${esc(m.candidato)}${m.numero ? ` (${esc(m.numero)})` : ''} — ${esc(m.cargo || 'Candidata/o')} · Santa Catarina`
       : 'Seções com voto · Santa Catarina';
-    const sub = `${esc(m.eleicao ? m.eleicao + ' · ' : '')}${model.totalVotos.toLocaleString('pt-BR')} votos em ${model.nSec.toLocaleString('pt-BR')} seções · ${model.nMun} de ${model.nMunTotal} municípios · ` +
+    const sub = `${esc(m.eleicao ? m.eleicao + ' · ' : '')}${model.totalVotos.toLocaleString('pt-BR')} votos em ${model.nSec.toLocaleString('pt-BR')} ${pl(model.nSec, 'seção', 'seções')} · ${model.nMun} de ${model.nMunTotal} municípios · ` +
       (model.realMode
-        ? `${model.nLoc} local(is) de votação com coordenada verificada` + (model.nNoGeo > 0 ? ` · ${model.nNoGeo} seção(ões) sem coordenada` : '')
+        ? `${model.nLoc} ${pl(model.nLoc, 'local', 'locais')} de votação com coordenada verificada` + (model.nNoGeo > 0 ? ` · ${model.nNoGeo} ${pl(model.nNoGeo, 'seção', 'seções')} sem coordenada` : '')
         : (showIllus
           ? 'posições ilustrativas (sem catálogo de coordenadas verificadas)'
           : 'georreferenciamento indisponível (sem catálogo) — sem marcadores de seção'));
     $('hudTitle').innerHTML = `<div class="t">${titulo}</div><div class="s">${sub}</div>`;
+    // Legenda em dois idiomas independentes, sem confluir os dois:
+    // (1) PREENCHIMENTO do município = votos do candidato, escala log2
+    //     (Core.fillFor: 0.12 + 0.73 · log2(v+1)/log2(max+1));
+    // (2) MARCADORES = locais de votação. O raio codifica os VOTOS agregados
+    //     no local (Core.dotR, saturado a partir de 5 votos) — nunca o
+    //     número de seções, e nunca com relação linear ilimitada.
     const sw = Array.from({ length: 8 }, (_, i) => {
       const t = i / 7;
       return `<rect x="${i * 15}" y="0" width="15" height="9" fill="${ACCENT}" fill-opacity="${Math.round((0.12 + 0.73 * t) * 1000) / 1000}"/>`;
     }).join('');
-    const dotLegend = model.realMode
-      ? `<div class="l2" style="margin-top:6px"><span class="d"></span><span>local de votação (verificado)</span><span style="flex:1"></span><span class="o"></span><span>ilustrativo (sem coordenada)</span></div>`
-      : showIllus
-        ? `<div class="l2" style="margin-top:6px"><span class="o"></span><span>1 seção · posição ILUSTRATIVA (sem coordenada verificada)</span></div>`
-        : `<div class="l2" style="margin-top:6px"><span>sem marcadores de seção — georreferenciamento indisponível</span></div>`;
+    const maxLbl = model.maxmun.toLocaleString('pt-BR') +
+      (model.maxMunNome ? ' (' + esc(model.maxMunNome) + ')' : '');
+    let dotLegend;
+    if (model.realMode) {
+      // linha ilustrativa só quando há o que ilustrar (seções sem
+      // coordenada) — nunca um símbolo morto na legenda.
+      const illusLine = (model.nNoGeo > 0 || showIllus)
+        ? `<div class="l2"><span class="o"></span><span>ilustrativo: posição NÃO geográfica (${model.nNoGeo} ${pl(model.nNoGeo, 'seção', 'seções')} sem coordenada ${showIllus ? '— modo ativo' : '— não desenhada por padrão'})</span></div>`
+        : '';
+      dotLegend =
+        `<div class="l2"><span class="d"></span><span>local de votação (verificado) · tamanho = votos no local (satura a partir de 5)</span></div>` +
+        illusLine;
+    } else if (showIllus) {
+      dotLegend = `<div class="l2"><span class="o"></span><span>1 seção · posição ILUSTRATIVA (não geográfica)</span></div>`;
+    } else {
+      dotLegend = `<div class="l2"><span>sem marcadores — georreferenciamento indisponível</span></div>`;
+    }
     $('hudLegend').innerHTML =
-      `<div class="l1">votos por município:</div>` +
-      `<svg width="120" height="9">${sw}</svg>` +
-      `<div class="l2"><span>0</span><span class="d"></span><span>1 seção</span><span style="flex:1"></span><span>${model.maxmun.toLocaleString('pt-BR')}${model.maxMunNome ? ' (' + esc(model.maxMunNome) + ')' : ''}</span></div>` +
+      `<div class="l1">votos por município (escala log):</div>` +
+      `<div class="lg-scale"><svg viewBox="0 0 120 9" preserveAspectRatio="none" aria-hidden="true">${sw}</svg>` +
+      `<div class="l2"><span>0</span><span style="flex:1"></span><span>${maxLbl}</span></div></div>` +
       dotLegend;
   }
   function renderChips() {
@@ -602,11 +701,11 @@
     const msgs = [];
     if (model.unmatched.length) {
       const nomes = model.unmatched.slice(0, 8).map(u => u[1]).join(', ');
-      msgs.push(`${model.unmatched.length} município(s) sem correspondência na malha (votos não plotados): ${nomes}${model.unmatched.length > 8 ? '…' : ''}`);
+      msgs.push(`${model.unmatched.length} ${pl(model.unmatched.length, 'município', 'municípios')} sem correspondência na malha (votos não plotados): ${nomes}${model.unmatched.length > 8 ? '…' : ''}`);
     }
-    if (model.ambiguous.length) msgs.push(`${model.ambiguous.length} nome(s) ambíguo(s) na malha — uso o primeiro correspondente.`);
+    if (model.ambiguous.length) msgs.push(`${model.ambiguous.length} ${pl(model.ambiguous.length, 'nome', 'nomes')} ${pl(model.ambiguous.length, 'ambíguo', 'ambíguos')} na malha — uso o primeiro correspondente.`);
     if (model.realMode) {
-      if (model.nNoGeo > 0) msgs.push(`${model.nNoGeo} seção(ões) sem coordenada verificada não estão no mapa — os totais preservam essas seções (use “modo ilustrativo” para visualizá-las com posição aproximada).`);
+      if (model.nNoGeo > 0) msgs.push(`${model.nNoGeo} ${pl(model.nNoGeo, 'seção', 'seções')} sem coordenada verificada não est${model.nNoGeo === 1 ? 'á' : 'ão'} no mapa — os totais preservam essas seções (use “modo ilustrativo” para visualizá-las com posição aproximada).`);
     } else if (showIllus) {
       msgs.push('Sem catálogo de coordenadas verificadas (data/geo_loc) — posições ILUSTRATIVAS dentro do município (modo ilustrativo ativo por escolha sua).');
     } else {
@@ -646,7 +745,9 @@
     const baseHalo = 3;
     const tip = $('tip');
 
+    let applyPending = 0;
     function apply() {
+      applyPending = 0;
       svg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
       const s = vb.w / W2; // pontos e rótulos com tamanho constante na tela
       for (let i = 0; i < dots.length; i++) dots[i].setAttribute('r', (baseR[i] * s).toFixed(2));
@@ -655,6 +756,12 @@
         lbls[i].setAttribute('stroke-width', (baseHalo * s).toFixed(2));
       }
     }
+    // loteia apply() em 1x por frame: com milhares de marcadores, um apply
+    // por evento de movimento derrubaria o frame rate durante pan/zoom.
+    function scheduleApply() {
+      if (applyPending) return;
+      applyPending = raf(() => apply());
+    }
     function zoomBy(f) {
       const cx = vb.x + vb.w / 2, cy = vb.y + vb.h / 2;
       const nw = Math.min(W2, Math.max(MIN_W, vb.w / f));
@@ -662,7 +769,7 @@
       vb.x = cx - (cx - vb.x) * k;
       vb.y = cy - (cy - vb.y) * k;
       vb.w = nw; vb.h = H2 * (nw / W2);
-      apply();
+      scheduleApply();
     }
     function resetView() { vb = { x: 0, y: 0, w: W2, h: H2 }; apply(); }
     mapZoom = { zoomBy, resetView };
@@ -683,27 +790,92 @@
         vb.x = p.x - (p.x - vb.x) * k;
         vb.y = p.y - (p.y - vb.y) * k;
         vb.w = nw; vb.h = H2 * (nw / W2);
-        apply();
+        scheduleApply();
         tip.style.display = 'none';
       }
     }, { passive: false });
-    svg.addEventListener('mousedown', ev => {
-      if (ev.button !== 0) return;
-      const r = svg.getBoundingClientRect();
-      drag = { sx: ev.clientX, sy: ev.clientY, vx: vb.x, vy: vb.y, k: vb.w / r.width };
-      svg.classList.add('dragging');
-      ev.preventDefault();
+
+    // ---- gestos (Pointer Events: mouse, toque e pinch) ----
+    // 1 ponteiro = pan; 2 ponteiros = pinch (zoom + pan simultâneos). O
+    // scroll da página é suprimido por `touch-action: none` no CSS do SVG
+    // (só sobre o mapa, nunca na página). Sem setPointerCapture: preserva o
+    // click/tap nos marcadores (tooltip) e o dblclick (reset). Os listeners
+    // de movimento/saída ficam na window, registrados UMA vez no init —
+    // `mapGesture` aponta sempre para o mapa atual.
+    const gesture = {
+      active: new Map(), pan0: null, pinch0: null, moved: false,
+      suppressClickUntil: 0,
+      onMove(ev) {
+        if (!gesture.active.has(ev.pointerId)) return;
+        gesture.active.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+        if (gesture.pinch0 && gesture.active.size >= 2) {
+          const pts = [...gesture.active.values()];
+          const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+          const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+          const nw = Math.min(W2, Math.max(MIN_W, gesture.pinch0.vb0.w * (gesture.pinch0.d0 / d)));
+          const k = nw / gesture.pinch0.rect.width;
+          vb.w = nw; vb.h = H2 * (nw / W2);
+          // o ponto SVG sob o meio da pinça inicial deve ficar sob o meio
+          // atual (zoom centrado nos dedos + pan pelo deslocamento deles)
+          vb.x = gesture.pinch0.q0.x - (mid.x - gesture.pinch0.rect.left) * k;
+          vb.y = gesture.pinch0.q0.y - (mid.y - gesture.pinch0.rect.top) * k;
+          gesture.moved = true;
+          tip.style.display = 'none';
+          scheduleApply();
+          return;
+        }
+        if (gesture.pan0) {
+          const dx = ev.clientX - gesture.pan0.sx, dy = ev.clientY - gesture.pan0.sy;
+          if (!gesture.moved && Math.hypot(dx, dy) > 4) {
+            gesture.moved = true;
+            tip.style.display = 'none';
+          }
+          vb.x = gesture.pan0.vx - dx * gesture.pan0.k;
+          vb.y = gesture.pan0.vy - dy * gesture.pan0.k;
+          scheduleApply();
+        }
+      },
+      onEnd(ev) {
+        if (!gesture.active.has(ev.pointerId)) return;
+        gesture.active.delete(ev.pointerId);
+        if (gesture.pinch0 && gesture.active.size >= 1) {
+          // um ponteiro sobrou do pinch: reancora o pan sem salto
+          const p = [...gesture.active.values()][0];
+          const rw = Math.max(1, svg.getBoundingClientRect().width);
+          gesture.pan0 = { sx: p.x, sy: p.y, vx: vb.x, vy: vb.y, k: vb.w / rw };
+        }
+        gesture.pinch0 = null;
+        if (gesture.active.size === 0) {
+          if (gesture.moved) gesture.suppressClickUntil = Date.now() + 400;
+          gesture.pan0 = null;
+          gesture.moved = false;
+          svg.classList.remove('dragging');
+        }
+      }
+    };
+    mapGesture = gesture;
+
+    svg.addEventListener('pointerdown', ev => {
+      if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+      gesture.active.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (gesture.active.size === 1) {
+        const rw = Math.max(1, svg.getBoundingClientRect().width);
+        gesture.pan0 = { sx: ev.clientX, sy: ev.clientY, vx: vb.x, vy: vb.y, k: vb.w / rw };
+        svg.classList.add('dragging');
+      } else if (gesture.active.size === 2) {
+        const pts = [...gesture.active.values()];
+        const mid0 = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+        gesture.pinch0 = {
+          d0: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1,
+          rect: svg.getBoundingClientRect(),
+          q0: toSvg({ clientX: mid0.x, clientY: mid0.y }),
+          vb0: { ...vb }
+        };
+        gesture.pan0 = null;
+        svg.classList.remove('dragging');
+      }
     });
-    window.addEventListener('mousemove', ev => {
-      if (!drag) return;
-      vb.x = drag.vx - (ev.clientX - drag.sx) * drag.k;
-      vb.y = drag.vy - (ev.clientY - drag.sy) * drag.k;
-      apply();
-      tip.style.display = 'none';
-    });
-    window.addEventListener('mouseup', () => {
-      if (drag) { drag = null; svg.classList.remove('dragging'); }
-    });
+
     svg.addEventListener('dblclick', ev => {
       ev.preventDefault();
       resetView();
@@ -716,13 +888,13 @@
         `<div class="muni">${esc(s.muniNome)}</div>` +
         `<div class="m">${esc(s.local)}</div>${end}` +
         (illusNote ? `<div class="tip-note">${illusNote}</div>` : '') +
-        `<div class="v">${s.votos} ${s.votos === 1 ? 'voto' : 'votos'}</div>`;
+        `<div class="v">${s.votos} ${pl(s.votos, 'voto', 'votos')}</div>`;
     }
     function tipLoc(m) {
       const L = geoCat.locais[m.i];
       const linhas = m.secs.slice(0, 8).map(s =>
-        `<div class="m">seção ${esc(s.secao)} (zona ${esc(s.zona)}) — ${s.votos} voto(s)</div>`).join('');
-      const mais = m.secs.length > 8 ? `<div class="m">… e mais ${m.secs.length - 8} seção(ões)</div>` : '';
+        `<div class="m">seção ${esc(s.secao)} (zona ${esc(s.zona)}) — ${s.votos} ${pl(s.votos, 'voto', 'votos')}</div>`).join('');
+      const mais = m.secs.length > 8 ? `<div class="m">… e mais ${m.secs.length - 8} ${pl(m.secs.length - 8, 'seção', 'seções')}</div>` : '';
       const src = L[9] ? ' · ' + esc(L[9]) : '';
       const edge = L[12] === 'edge' ? '<div class="tip-note">próximo da fronteira do município (validado)</div>' : '';
       return `<div class="h">${esc(titleCase(L[4]))}</div>` +
@@ -731,7 +903,7 @@
         `<div class="m">zona(s): ${esc(L[6].map(z => 'Z' + z).join(', '))}</div>` +
         linhas + mais +
         `<div class="tip-note">coordenada verificada${src}</div>` + edge +
-        `<div class="v">${m.votes} ${m.votes === 1 ? 'voto' : 'votos'} em ${m.secs.length} seção(ões)</div>`;
+        `<div class="v">${m.votes} ${pl(m.votes, 'voto', 'votos')} em ${m.secs.length} ${pl(m.secs.length, 'seção', 'seções')}</div>`;
     }
     function showTip(dt, cx, cy) {
       // dt.kind: 'loc' (marcador verificado) ou 'sec-ill' (modo ilustrativo).
@@ -746,13 +918,15 @@
       tip.style.left = x + 'px'; tip.style.top = y + 'px';
     }
     svg.addEventListener('mousemove', ev => {
-      if (drag) return;
+      if (gesture.pan0) return;
       const t = ev.target;
       if (t.classList && t.classList.contains('dot')) showTip(model.dots[+t.dataset.i], ev.clientX, ev.clientY);
       else if (tip.style.display === 'block') tip.style.display = 'none';
     });
     svg.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
     svg.addEventListener('click', ev => {
+      // click derivado de um pan não abre tooltip (dedo/solto longe do start)
+      if (gesture.suppressClickUntil > Date.now()) return;
       const t = ev.target;
       if (t.classList && t.classList.contains('dot')) showTip(model.dots[+t.dataset.i], ev.clientX, ev.clientY);
       else if (tip.style.display === 'block') tip.style.display = 'none';
@@ -766,16 +940,31 @@
     $('results').hidden = true;
     $('errBox').textContent = msg;
     $('errBox').hidden = false;
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: scrollBehavior() });
   }
-  async function loadDataset(obj) {
+  /**
+   * Carrega e desenha um dataset.
+   *
+   * @param {object} obj dataset {total, mun, sections, …} (formato do README).
+   * @param {(msg: string) => void} [onStage] callback de estado de carga
+   *   (msg '' = limpar). O chamador decide a superfície (status do painel
+   *   TSE ou linha do dropzone); sem percentual — só há progresso
+   *   mensurável no download do CDN (já coberto por tseStatus).
+   * @returns {Promise<boolean>} true se o mapa foi desenhado.
+   */
+  async function loadDataset(obj, onStage) {
+    const stage = msg => { if (onStage) onStage(msg); };
     $('errBox').hidden = true;
+    if (!geo) stage('Carregando a malha municipal de SC…');
     try { await ensureGeo(); }
     catch (e) {
+      stage('');
       showError('Falha ao carregar a malha municipal de SC (data/geo_sc_municipios.json) — tente novamente.');
       return false;
     }
+    if (geoCat == null && !geoCatPromise) stage('Carregando o catálogo de coordenadas verificadas…');
     await loadGeoCatalog(); // null = catálogo indisponível (modo ilustrativo)
+    stage('');
     showIllus = false;
     updateIllusBtn();
     const ds = Core.parseDataset(obj);
@@ -800,6 +989,21 @@
     renderHud();
     renderMap();
     updateIllusBtn();
+    // O mapa é o produto: recolhe o painel TSE (se aberto) e leva os
+    // resultados à frente do viewport (scroll suave, salvo reduced-motion).
+    if (!$('tsePanel').hidden) {
+      $('tsePanel').hidden = true;
+      $('btnTse').classList.remove('active');
+    }
+    if (window.matchMedia && window.matchMedia('(max-width: 640px)').matches) {
+      // no mobile o mapa (o produto) deve entrar inteiro no viewport, logo
+      // abaixo da topbar sticky; chips ficam a um gesto acima
+      const tb = document.querySelector('.topbar');
+      const docTop = $('mapBox').getBoundingClientRect().top + window.scrollY;
+      window.scrollTo({ top: Math.max(0, docTop - (tb ? tb.offsetHeight : 64) - 10), behavior: scrollBehavior() });
+    } else {
+      $('results').scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
+    }
     return true;
   }
   function handleFile(file) {
@@ -837,6 +1041,9 @@
 
   // ---------------- eventos / init ----------------
   async function init() {
+    // Landing TSE-first: o painel de consulta já nasce visível (é o modo
+    // padrão do produto); a importação de JSON fica como ação secundária.
+    $('btnTse').classList.add('active');
     $('btnLoad').addEventListener('click', () => $('fileInput').click());
     $('fileInput').addEventListener('change', ev => { handleFile(ev.target.files[0]); ev.target.value = ''; });
     $('btnSample').addEventListener('click', loadSample);
@@ -849,17 +1056,27 @@
     $('tseGoDrop').addEventListener('click', () => {
       $('tsePanel').hidden = false;
       $('btnTse').classList.add('active');
-      $('tsePanel').scrollIntoView({ behavior: 'smooth' });
+      $('tsePanel').scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
     });
     document.querySelectorAll('input[name="tseCargo"]').forEach(r =>
       r.addEventListener('change', () => {
         const sel = $('tseSel');
         sel.hidden = true;
         $('tseNum').value = '';
+        $('tseFilterRow').hidden = true;
+        $('tseFilter').value = '';
+        $('tseFilterCount').textContent = '';
+        tseListFull = [];
         $('tseSize').textContent = tseCargoSel().sizeMB.toLocaleString('pt-BR') + ' MB';
         $('tseBig').hidden = tseCargoSel().id !== 'PRESIDENTE';
       }));
     $('btnTseList').addEventListener('click', tseList);
+    $('tseFilter').addEventListener('input', () => renderTseList($('tseFilter').value));
+    $('btnPick').addEventListener('click', () => $('fileInput').click());
+    // pan/pinch: um único par de listeners na window, delegados ao mapa atual
+    window.addEventListener('pointermove', ev => { if (mapGesture) mapGesture.onMove(ev); });
+    window.addEventListener('pointerup', ev => { if (mapGesture) mapGesture.onEnd(ev); });
+    window.addEventListener('pointercancel', ev => { if (mapGesture) mapGesture.onEnd(ev); });
     $('btnTseMap').addEventListener('click', tseMap);
     $('tseRetry').addEventListener('click', () => {
       $('tseRetry').hidden = true;
@@ -891,7 +1108,7 @@
     $('btnChange').addEventListener('click', () => {
       $('tsePanel').hidden = false;
       $('btnTse').classList.add('active');
-      $('tsePanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      $('tsePanel').scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
       const n = $('tseNum');
       if (n.focus) n.focus();
     });
@@ -900,7 +1117,11 @@
       $('fileActions').hidden = true;
       $('dropZone').classList.remove('hidden');
       $('tseSel').hidden = true;
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      $('tseFilterRow').hidden = true;
+      $('tseFilter').value = '';
+      $('tseFilterCount').textContent = '';
+      tseListFull = [];
+      window.scrollTo({ top: 0, behavior: scrollBehavior() });
     });
     $('tseCancel').addEventListener('click', () => { if (tseAbort) tseAbort.abort(); });
     $('btnIllus').addEventListener('click', () => {
@@ -917,9 +1138,14 @@
     $('zoomOut').addEventListener('click', () => { if (mapZoom) mapZoom.zoomBy(1 / 1.4); });
     $('zoomReset').addEventListener('click', () => { if (mapZoom) mapZoom.resetView(); });
 
+    // Carga inicial da malha municipal (2,3 MB): estado visível no bloco de
+    // importação enquanto não está pronta.
+    $('dzStatus').textContent = 'Preparando a malha municipal de SC…';
     try {
       await ensureGeo();
+      $('dzStatus').textContent = '';
     } catch (e) {
+      $('dzStatus').textContent = '';
       showError('Falha ao carregar a malha municipal de SC (data/geo_sc_municipios.json).');
     }
   }

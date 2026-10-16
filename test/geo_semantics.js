@@ -318,7 +318,8 @@ console.log('== 5) semântica honesta na UI ==');
       getBoundingClientRect() { return { width: 1000, height: 700, left: 0, top: 0 }; },
       click() {}, appendChild(c) { this.children.push(c); }, remove() {},
       createSVGPoint() { return { x: 0, y: 0, matrixTransform() { return this; } }; },
-      getScreenCTM() { return null; }
+      getScreenCTM() { return null; },
+      scrollIntoView() {}, focus() {}, blur() {}
     };
   }
   const IDS = ['dropZone','results','fileActions','errBox','btnLoad','fileInput','btnSample','btnSample2',
@@ -375,10 +376,15 @@ console.log('== 5) semântica honesta na UI ==');
   const aria = /aria-label="([^"]*)"/.exec(svg);
   check('modo ilustrativo: aria-label afirma posição ILUSTRATIVA',
     !!aria && /ilustrativ/i.test(aria[1]), aria ? aria[1].slice(-110) : 'sem aria');
-  check('legenda no formato antigo (0 ● 1 seção … maxmun)',
-    els.hudLegend.innerHTML.includes('>1 seção<') &&
-    els.hudLegend.innerHTML.includes('1.745 (Florianópolis)') &&
+  check('legenda: escala log declarada + max do município',
+    els.hudLegend.innerHTML.includes('escala log') &&
+    els.hudLegend.innerHTML.includes('1.745 (Florianópolis)'));
+  check('legenda: sem confluência marcador/escala (">1 seção<")',
+    !els.hudLegend.innerHTML.includes('>1 seção<') &&
     !els.hudLegend.innerHTML.includes('1 ponto = 1 seção'));
+  check('legenda (ilustrativo sem catálogo): seção ILUSTRATIVA não geográfica',
+    els.hudLegend.innerHTML.includes('ILUSTRATIVA') &&
+    els.hudLegend.innerHTML.includes('não geográfica'));
   check('modo ilustrativo: HUD declara posições ilustrativas',
     els.hudTitle.innerHTML.includes('posições ilustrativas') &&
     !/coordenada verificada/i.test(els.hudTitle.innerHTML));

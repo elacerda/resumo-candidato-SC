@@ -2,7 +2,10 @@
 
 App **estático, sem backend** (GitHub Pages: `elacerda.github.io/resumo-candidato-SC/`), em
 100% JavaScript no navegador: mapa interativo das seções de votação **com voto** de um
-candidato em Santa Catarina, Eleições 2026. Cada ponto = 1 seção; choropleth por município.
+candidato em Santa Catarina, Eleições 2026. Cada marcador = 1 local de votação em coordenada
+verificada (catálogo `data/geo_loc/`; 99,97% das seções cobertas; as seções do local são agregadas
+no marcador); choropleth por município. Sem o catálogo, o app declara georreferenciamento
+indisponível e o modo ilustrativo só é exibido por escolha explícita.
 Nenhum dado sai da máquina do usuário.
 
 ## Como o usuário usa (3 modos)
