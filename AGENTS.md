@@ -151,6 +151,12 @@ node test/geo_verify.js    # catálogo georreferenciado: integridade, PIP própr
                            # modo ilustrativo separado, fallback sem catálogo: estado
                            # indisponível + ilustrativo por escolha explícita)
 node test/tse_e2e.js       # zip oficial TSE -> parser JS vs dataset publicado (requer /tmp/tse_sc.zip)
+node test/ui_browser.js    # UI em Chrome headless (CDP; 1440x882 + 390x844): landing, busca,
+                           # zoom/pan/pinch, tooltip, a11y, export SVG/JSON, estados de erro
+node test/labels_browser.js # rótulos adaptativos no Chrome: sem sobreposição entre caixas
+                           # renderizadas, prioridade por votos (3M / 4,8 mil / 184 votos),
+                           # só nomes no zoom total (votos ao aproximar), zoom revela mais
+                           # rótulos, densidade 1440 vs 390, hover no choropleth, export SVG
 python3 test/geo_pbf_roundtrip.py # leitor PBF (roundtrip contra o proto oficial)
 python3 test/geo_ref_check.py     # catálogo publicado: schema 16 colunas, 295 municípios,
                                   # contenção PIP, re-derivação TSE + spot-checks geográficos,

@@ -7,7 +7,7 @@
   const BG = '#0e1319', FILL0 = '#161d27', STROKE0 = '#2a3543',
         ACCENT = '#f63b4b', STROKE1 = '#7a353b', DOT = '#ffb454',
         DOT_ED = 'rgba(255,255,255,0.25)', FG = '#e8eef5', MUTED = '#8fa0b3';
-  const W = 980, PAD = 14;
+  const W = 980, PAD = 14, MAP_W2 = W + 2 * PAD; // largura total do viewBox (zoom s = vb.w/MAP_W2)
 
   const $ = id => document.getElementById(id);
   const esc = t => String(t == null ? '' : t)
@@ -463,6 +463,8 @@
       if (!munSections.has(g)) munSections.set(g, []);
       munSections.get(g).push(s);
     }
+    const munSec = new Map();
+    for (const [g, list] of munSections) munSec.set(g, list.length);
     // MODO REAL (catálogo data/geo_loc presente): 1 marcador por LOCAL DE
     // VOTAÇÃO, na coordenada verificada do catálogo (seções do mesmo local
     // coincidem; o marcador agrega as seções). Sem catálogo: 1 ponto por
@@ -529,27 +531,25 @@
     }
     const metaByName = new Map();
     for (const [m, v] of Object.entries(ds.mun)) if (tse2geo.has(m)) metaByName.set(tse2geo.get(m), titleCase(v.nome));
-    const labels = [];
+    // RÓTULOS ADAPTATIVOS: todos os municípios com voto > 0 são candidatos
+    // (sem limiar absoluto — a escala do candidato não muda o algoritmo).
+    // Prioridade = total de votos do candidato (desc; desempate determinístico
+    // por código IBGE). QUANTOS aparecem é decidido por layoutLabels() na
+    // vista corrente (colisão com as caixas reais do texto renderizado).
+    const labelAll = [];
     for (const [g, v] of munVotes) {
-      if (v >= 60) {
-        const [cx, cy] = Core.centroid(Core.biggestRing(ringsByGeo.get(g)));
-        const [x, y] = proj.P(cx, cy);
-        labels.push({ x, y, nome: metaByName.get(g), v });
-      }
+      if (!(v > 0)) continue;
+      const [cx, cy] = Core.centroid(Core.biggestRing(ringsByGeo.get(g)));
+      const [x, y] = proj.P(cx, cy);
+      labelAll.push({ g, x, y, nome: metaByName.get(g), v });
     }
-    if (labels.length < 1) {
-      [...munVotes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).forEach(([g, v]) => {
-        const [cx, cy] = Core.centroid(Core.biggestRing(ringsByGeo.get(g)));
-        const [x, y] = proj.P(cx, cy);
-        labels.push({ x, y, nome: metaByName.get(g), v });
-      });
-    }
-    labels.sort((a, b) => b.v - a.v);
+    labelAll.sort((a, b) => (b.v - a.v) || (Number(a.g) - Number(b.g)));
+    labelAll.forEach((lb, i) => { lb.i = i; });
     const totalVotos = ds.total || ds.sections.reduce((a, s) => a + s.votos, 0);
     const nLoc = realMode ? model_nLoc : 0;
     return {
       meta: ds.meta, tse2geo, unmatched, ambiguous, munVotes, maxmun, maxMunNome,
-      dots, labels, totalVotos,
+      dots, labelAll, munNames: metaByName, munSec, totalVotos,
       nSec: ds.sections.length,
       nMun: tse2geo.size,
       nMunTotal: geo.features.length,
@@ -557,6 +557,151 @@
     };
   }
   let model_nLoc = 0; // contagem de locais distintos do último build
+
+  // ---------------- layout adaptativo de rótulos de município ----------------
+  // Sem limiar absoluto de votos: TODOS os municípios com voto > 0 são
+  // candidatos (model.labelAll, em prioridade de votos desc). A visibilidade
+  // é decidida por vista:
+  //  - colisão: caixas REAIS do texto (getBBox no render; fallback
+  //    determinístico sem DOM). A caixa escala com o zoom (fonte fs*s,
+  //    ancorada no centroid) — duas caixas que se cruzam em unidades do
+  //    SVG se cruzam na tela (projeção uniforme);
+  //  - densidade: gap mínimo em PX DE TELA entre caixas. Em telas pequenas
+  //    o mesmo gap ocupa mais unidades do mapa → menos rótulos no mobile;
+  //  - zoom: a linha "N votos" só aparece com vb.w <= MAP_W2/LBL_VOTES_Z
+  //    (no zoom de estado completo, só nomes — votos ficam no hover do
+  //    choropleth e no tooltip dos marcadores);
+  //  - painéis flutuantes (HUD/legenda/botões de zoom, fundo opaco 0,92)
+  //    são obstáculos: rótulo que cairia embaixo deles DESVIA (ordem fixa
+  //    cima/baixo/esquerda/direita, até ficar totalmente fora do painel) —
+  //    nunca se desvia de outro rótulo (colisão rótulo×rótulo mantém a
+  //    rejeição por prioridade). O desvio é LIMITADO: no máximo a extensão
+  //    do próprio painel + gap (no eixo do desvio) e 4×(gap + w + h) do
+  //    rótulo — desvio maior desliga o rótulo da posição do município
+  //    (deshonesto geograficamente); sem desvio válido, o rótulo fica
+  //    oculto e só reaparece quando o zoom/pan traz a âncora para fora do
+  //    painel. O desvio é aplicado via transform, na mesma escala da vista,
+  //    e recalculado por apply();
+  //  - a recálculo roda dentro de apply() (loteado em rAF, 1x/frame).
+  const LBL_GAP_PX = 14;
+  const LBL_VOTES_Z = 2;
+  const LBL_VIEW_MARGIN = 0.25;
+  const LBL_NAME_FS = 11, LBL_VOTES_FS = 9.5;
+  const votesText = v => v.toLocaleString('pt-BR') + ' votos';
+  // caixa estimada (fallback sem getBBox): largura média por glifo 0.58*fs
+  function estLabelBox(ax, ay, fs, text) {
+    const w = Math.round(0.58 * fs * text.length * 10) / 10;
+    const h = Math.round(1.25 * fs * 10) / 10;
+    return { ax, ay, x: ax - w / 2, y: ay - 0.8 * fs, w, h };
+  }
+  function scaledBox(b, s) {
+    return { x: b.ax + (b.x - b.ax) * s, y: b.ay + (b.y - b.ay) * s, w: b.w * s, h: b.h * s };
+  }
+  function unionBox(a, b) {
+    const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+    return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+  }
+  function boxesCollide(a, b, gap) {
+    return !(a.x + a.w + gap <= b.x || b.x + b.w + gap <= a.x ||
+             a.y + a.h + gap <= b.y || b.y + b.h + gap <= a.y);
+  }
+  function boxesCollideAny(box, others, gap) {
+    for (const o of others) if (boxesCollide(o, box, gap)) return true;
+    return false;
+  }
+  /**
+   * Decide quais rótulos aparecem sem sobreposição na vista `vb`.
+   *
+   * Greedy em prioridade de votos (ordem de model.labelAll): um município é
+   * aceito se a âncora estiver na vista alargada por LBL_VIEW_MARGIN e a
+   * caixa (escala s = vb.w/MAP_W2, gap LBL_GAP_PX em px de tela) não cruzar a de
+   * nenhum já aceito. Colisão com PAINÉIS FLUTUANTES (obstacles, em unidades
+   * da vista) resolve por desvio determinístico (cima → baixo → esquerda →
+   * direita, até ficar totalmente fora do painel, mantido dentro da vista
+   * e limitado, por eixo, ao menor de (extensão do painel + gap) e
+   * 4×(gap + w + h) do rótulo — desvio maior desliga o rótulo do
+   * município; sem candidato válido, o rótulo é rejeitado). Colisão com
+   * outro rótulo mantém a rejeição por prioridade.
+   * Determinístico para a mesma vista, dataset e painéis.
+   *
+   * @param {{x:number, y:number, w:number, h:number}} vb viewBox atual.
+   * @param {number} R largura do mapa em px de tela (adapta a densidade).
+   * @param {{x:number, y:number, w:number, h:number}[]} [obstacles] painéis flutuantes (unidades da vista).
+   * @returns {{visible: Set<number>, withVotes: boolean, nudges: ({dx:number, dy:number}|null)[]}}
+   *   índices visíveis, flag da linha de votos e desvio (unidades da vista) por rótulo.
+   */
+  function layoutLabels(vb, R, obstacles) {
+    const s = vb.w / MAP_W2;
+    const gap = LBL_GAP_PX * (vb.w / Math.max(R, 1));
+    const withVotes = vb.w * LBL_VOTES_Z <= MAP_W2;
+    const mx = vb.w * LBL_VIEW_MARGIN, my = vb.h * LBL_VIEW_MARGIN;
+    const nObs = (obstacles || []).length;
+    const accepted = obstacles || [];
+    const visible = new Set();
+    const nudges = [];
+    for (const lb of model.labelAll) {
+      if (lb.x < vb.x - mx || lb.x > vb.x + vb.w + mx || lb.y < vb.y - my || lb.y > vb.y + vb.h + my) continue;
+      let box = scaledBox(lb.nbox || estLabelBox(lb.x, lb.y - 4, LBL_NAME_FS, lb.nome), s);
+      if (withVotes) box = unionBox(box, scaledBox(lb.vbox || estLabelBox(lb.x, lb.y + 9, LBL_VOTES_FS, votesText(lb.v)), s));
+      let dx = 0, dy = 0, placed = false;
+      if (!boxesCollideAny(box, accepted, gap)) {
+        accepted.push(box);
+        placed = true;
+      } else if (!boxesCollideAny(box, accepted.slice(nObs), gap)) {
+        // colide SÓ com painéis: tenta desvios em ordem fixa (o desvio
+        // garante sair totalmente do painel; nunca cruza outro rótulo)
+        // limite do desvio por eixo: no máximo a extensão do próprio
+        // painel + gap (sair do painel é o único motivo do desvio) e
+        // 4×(gap + w + h) do rótulo (além disso o rótulo pararia longe do
+        // município — posição enganosa; melhor ocultá-lo até o zoom/pan
+        // trazer a âncora para fora do painel).
+        const baseBound = 4 * (gap + box.w + box.h);
+        for (let oi = 0; oi < nObs && !placed; oi++) {
+          const p = accepted[oi];
+          if (!boxesCollide(p, box, gap)) continue;
+          const cands = [
+            { dx: 0, dy: p.y - gap - (box.y + box.h), lim: Math.min(p.h + gap, baseBound) },
+            { dx: 0, dy: p.y + p.h + gap - box.y, lim: Math.min(p.h + gap, baseBound) },
+            { dx: p.x - gap - (box.x + box.w), dy: 0, lim: Math.min(p.w + gap, baseBound) },
+            { dx: p.x + p.w + gap - box.x, dy: 0, lim: Math.min(p.w + gap, baseBound) }
+          ];
+          for (const o of cands) {
+            if (Math.abs(o.dx) > o.lim || Math.abs(o.dy) > o.lim) continue;
+            const b2 = { x: box.x + o.dx, y: box.y + o.dy, w: box.w, h: box.h };
+            if (b2.x < vb.x - 1 || b2.x + b2.w > vb.x + vb.w + 1 || b2.y < vb.y - 1 || b2.y + b2.h > vb.y + vb.h + 1) continue;
+            if (boxesCollideAny(b2, accepted, gap)) continue;
+            accepted.push(b2);
+            dx = o.dx; dy = o.dy; placed = true;
+            break;
+          }
+        }
+      }
+      if (!placed) continue;
+      visible.add(lb.i);
+      nudges[lb.i] = (dx || dy) ? { dx, dy } : null;
+    }
+    return { visible, withVotes, nudges };
+  }
+  /**
+   * Mede as caixas REAIS do texto renderizado (getBBox, escala base) para
+   * cada rótulo. Sem getBBox (testes Node) usa a estimativa determinística.
+   *
+   * @param {SVGSVGElement} svg mapa recém-renderizado (fontes no tamanho base).
+   * @sideeffect preenche lb.nbox/lb.vbox em model.labelAll.
+   */
+  function measureLabelBoxes(svg) {
+    const names = svg.querySelectorAll('text.lbl-name');
+    const votes = svg.querySelectorAll('text.lbl-votes');
+    for (let i = 0; i < model.labelAll.length; i++) {
+      const lb = model.labelAll[i];
+      const n = names[i] && typeof names[i].getBBox === 'function' ? names[i].getBBox() : null;
+      const v = votes[i] && typeof votes[i].getBBox === 'function' ? votes[i].getBBox() : null;
+      lb.nbox = n ? { ax: lb.x, ay: lb.y - 4, x: n.x, y: n.y, w: n.width, h: n.height }
+                  : estLabelBox(lb.x, lb.y - 4, LBL_NAME_FS, lb.nome);
+      lb.vbox = v ? { ax: lb.x, ay: lb.y + 9, x: v.x, y: v.y, w: v.width, h: v.height }
+                  : estLabelBox(lb.x, lb.y + 9, LBL_VOTES_FS, votesText(lb.v));
+    }
+  }
 
   // ---------------- construção do SVG ----------------
   function svgParts(withTitles) {
@@ -587,8 +732,8 @@
         const pts = ring.length > 12 ? Core.decimate(ring, 3) : ring;
         const d = 'M ' + pts.map(p => proj.P(p[0], p[1]).join(' ')).join(' L ') + ' Z';
         parts.push(fo === null
-          ? `<path d="${d}" fill="${FILL0}" stroke="${STROKE0}" stroke-width="0.6" vector-effect="non-scaling-stroke"/>`
-          : `<path d="${d}" fill="${ACCENT}" fill-opacity="${fo}" stroke="${STROKE1}" stroke-width="0.6" vector-effect="non-scaling-stroke"/>`);
+          ? `<path class="mun" data-g="${g}" d="${d}" fill="${FILL0}" stroke="${STROKE0}" stroke-width="0.6" vector-effect="non-scaling-stroke"/>`
+          : `<path class="mun" data-g="${g}" d="${d}" fill="${ACCENT}" fill-opacity="${fo}" stroke="${STROKE1}" stroke-width="0.6" vector-effect="non-scaling-stroke"/>`);
       }
     }
     model.dots.forEach((dt, i) => {
@@ -618,9 +763,18 @@
         parts.push(`<circle${attrs} cx="${dt.x}" cy="${dt.y}" r="${dt.r}" fill="${DOT}" fill-opacity="0.9" stroke="${DOT_ED}" stroke-width="0.5" vector-effect="non-scaling-stroke">${title}</circle>`);
       }
     });
-    for (const lb of model.labels) {
-      parts.push(`<text class="lbl" x="${lb.x}" y="${lb.y - 4}" text-anchor="middle" font-size="11" font-weight="600" fill="${FG}" stroke="${BG}" stroke-width="3" paint-order="stroke">${esc(lb.nome)}</text>`);
-      parts.push(`<text class="lbl" x="${lb.x}" y="${lb.y + 9}" text-anchor="middle" font-size="9.5" fill="${MUTED}" stroke="${BG}" stroke-width="3" paint-order="stroke">${lb.v} votos</text>`);
+    // RÓTULOS: no export (withTitles), só entram os rótulos aceitos por
+    // layoutLabels na vista base (s=1 → apenas nomes): o arquivo nunca tem
+    // rótulos sobrepostos. No mapa interativo, TODAS as linhas vão para o
+    // DOM; a visibilidade por vista é decidida em apply() (loteado em rAF)
+    // — a aplicação inicial roda síncrono no attachZoomPan (sem flash).
+    const layout = layoutLabels({ x: 0, y: 0, w: W2, h: H2 }, MAP_W2);
+    for (const lb of model.labelAll) {
+      if (withTitles && !layout.visible.has(lb.i)) continue;
+      parts.push(`<text class="lbl lbl-name" x="${lb.x}" y="${lb.y - 4}" text-anchor="middle" font-size="11" font-weight="600" fill="${FG}" stroke="${BG}" stroke-width="3" paint-order="stroke">${esc(lb.nome)}</text>`);
+      if (!withTitles || layout.withVotes) {
+        parts.push(`<text class="lbl lbl-votes" x="${lb.x}" y="${lb.y + 9}" text-anchor="middle" font-size="9.5" fill="${MUTED}" stroke="${BG}" stroke-width="3" paint-order="stroke">${esc(votesText(lb.v))}</text>`);
+      }
     }
     parts.push('</svg>');
     return { body: parts.join('\n'), W2, H2 };
@@ -742,9 +896,55 @@
     const baseR = dots.map(d => parseFloat(d.getAttribute('r')));
     const lbls = Array.from(svg.querySelectorAll('text.lbl'));
     const baseFs = lbls.map(t => parseFloat(t.getAttribute('font-size')));
+    const lblNames = Array.from(svg.querySelectorAll('text.lbl-name'));
+    const lblVotes = Array.from(svg.querySelectorAll('text.lbl-votes'));
     const baseHalo = 3;
     const tip = $('tip');
 
+    // Obstáculos do layout de rótulos: painéis flutuantes com fundo opaco
+    // que cobrem o mapa (HUD de título, legenda, coluna de botões de zoom).
+    // A posição é cacheada como DESLOJAMENTO em px relativo ao canto
+    // superior esquerdo do SVG (medido na mesma leitura de retângulo):
+    // é invariante a scroll da página (painel e SVG se movem juntos em
+    // .mapwrap) — re-medir só quando o TAMANHO do SVG muda (chave do
+    // cache), mantendo o invariante de 1 getBoundingClientRect por frame
+    // durante pan/zoom. Em mobile (≤640px) a legenda sai do mapa
+    // (position: static) — o filtro de interseção com o retângulo do SVG
+    // a exclui automaticamente.
+    const panelCache = { key: '', rects: [] };
+    /**
+     * Painéis flutuantes que cobrem o mapa, em unidades da vista atual.
+     *
+     * @param {{width:number, height:number}} sr retângulo renderizado do SVG
+     *   (mesma leitura de apply()).
+     * @returns {{x:number, y:number, w:number, h:number}[]|null} obstáculos
+     *   em unidades do viewBox (null = nenhum painel cobre o mapa).
+     */
+    function panelObstacles(sr) {
+      const key = Math.round(sr.width) + 'x' + Math.round(sr.height);
+      if (panelCache.key !== key) {
+        panelCache.rects = [];
+        const push = el => {
+          if (!el || typeof el.getBoundingClientRect !== 'function') return;
+          const r = el.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0) panelCache.rects.push({ l: r.left - sr.left, t: r.top - sr.top, w: r.width, h: r.height });
+        };
+        push(document.getElementById('hudTitle'));
+        push(document.getElementById('hudLegend'));
+        push(document.querySelector('.mapzoom'));
+        panelCache.key = key;
+      }
+      if (!panelCache.rects.length) return null;
+      const kx = vb.w / Math.max(1, sr.width);
+      const ky = vb.h / Math.max(1, sr.height);
+      const obs = [];
+      for (const p of panelCache.rects) {
+        // só conta painel que realmente cobre parte do SVG na tela
+        if (p.l + p.w < -1 || p.l > sr.width + 1 || p.t + p.h < -1 || p.t > sr.height + 1) continue;
+        obs.push({ x: vb.x + p.l * kx, y: vb.y + p.t * ky, w: p.w * kx, h: p.h * ky });
+      }
+      return obs.length ? obs : null;
+    }
     let applyPending = 0;
     function apply() {
       applyPending = 0;
@@ -754,6 +954,25 @@
       for (let i = 0; i < lbls.length; i++) {
         lbls[i].setAttribute('font-size', (baseFs[i] * s).toFixed(2));
         lbls[i].setAttribute('stroke-width', (baseHalo * s).toFixed(2));
+      }
+      // visibilidade adaptativa dos rótulos no MESMO lote rAF de pan/zoom:
+      // colisão com caixas reais do texto + densidade por px de tela +
+      // desvio determinístico em volta dos painéis flutuantes (transform
+      // recalculado a cada vista; o export não passa obstáculos → inalterado)
+      const sr = svg.getBoundingClientRect();
+      const R = Math.max(1, sr.width || 0);
+      const lay = layoutLabels(vb, R, panelObstacles(sr));
+      for (let i = 0; i < lblNames.length; i++) {
+        const on = lay.visible.has(i);
+        lblNames[i].style.display = on ? '' : 'none';
+        lblVotes[i].style.display = on && lay.withVotes ? '' : 'none';
+        const nd = lay.nudges[i];
+        const tr = on && nd ? `translate(${nd.dx.toFixed(2)} ${nd.dy.toFixed(2)})` : null;
+        for (const t of [lblNames[i], lblVotes[i]]) {
+          if (t.getAttribute('transform') === tr) continue;
+          if (tr) t.setAttribute('transform', tr);
+          else t.removeAttribute('transform');
+        }
       }
     }
     // loteia apply() em 1x por frame: com milhares de marcadores, um apply
@@ -905,11 +1124,8 @@
         `<div class="tip-note">coordenada verificada${src}</div>` + edge +
         `<div class="v">${m.votes} ${pl(m.votes, 'voto', 'votos')} em ${m.secs.length} ${pl(m.secs.length, 'seção', 'seções')}</div>`;
     }
-    function showTip(dt, cx, cy) {
-      // dt.kind: 'loc' (marcador verificado) ou 'sec-ill' (modo ilustrativo).
-      tip.innerHTML = dt.kind === 'loc'
-        ? tipLoc(dt.loc)
-        : tipSec(dt.s, 'posição ILUSTRATIVA — sem coordenada verificada');
+    function showTipAt(html, cx, cy) {
+      tip.innerHTML = html;
       tip.style.display = 'block';
       const bw = tip.offsetWidth, bh = tip.offsetHeight;
       let x = cx + 14, y = cy + 14;
@@ -917,10 +1133,25 @@
       if (y + bh > window.innerHeight - 8) y = cy - bh - 14;
       tip.style.left = x + 'px'; tip.style.top = y + 'px';
     }
+    function showTip(dt, cx, cy) {
+      // dt.kind: 'loc' (marcador verificado) ou 'sec-ill' (modo ilustrativo).
+      showTipAt(dt.kind === 'loc'
+        ? tipLoc(dt.loc)
+        : tipSec(dt.s, 'posição ILUSTRATIVA — sem coordenada verificada'), cx, cy);
+    }
+    function tipMun(g) {
+      const v = model.munVotes.get(g) || 0;
+      const nSec = model.munSec.get(g) || 0;
+      const pct = model.totalVotos ? (100 * v / model.totalVotos).toFixed(1).replace('.', ',') : '0,0';
+      return `<div class="h">${esc(model.munNames.get(g) || g)}</div>` +
+        `<div class="v">${v.toLocaleString('pt-BR')} ${pl(v, 'voto', 'votos')} · ${pct}% dos votos</div>` +
+        `<div class="m">${nSec.toLocaleString('pt-BR')} ${pl(nSec, 'seção', 'seções')} com voto</div>`;
+    }
     svg.addEventListener('mousemove', ev => {
       if (gesture.pan0) return;
       const t = ev.target;
       if (t.classList && t.classList.contains('dot')) showTip(model.dots[+t.dataset.i], ev.clientX, ev.clientY);
+      else if (t.classList && t.classList.contains('mun')) showTipAt(tipMun(t.dataset.g), ev.clientX, ev.clientY);
       else if (tip.style.display === 'block') tip.style.display = 'none';
     });
     svg.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
@@ -929,8 +1160,13 @@
       if (gesture.suppressClickUntil > Date.now()) return;
       const t = ev.target;
       if (t.classList && t.classList.contains('dot')) showTip(model.dots[+t.dataset.i], ev.clientX, ev.clientY);
+      else if (t.classList && t.classList.contains('mun')) showTipAt(tipMun(t.dataset.g), ev.clientX, ev.clientY);
       else if (tip.style.display === 'block') tip.style.display = 'none';
     });
+    // mede as caixas REAIS do texto (getBBox) e aplica a visão inicial;
+    // síncrono na mesma task do renderMap (sem flash de rótulos)
+    measureLabelBoxes(svg);
+    apply();
   }
 
   // ---------------- carregar dataset ----------------
@@ -1130,9 +1366,11 @@
       showIllus = !showIllus;
       if (model) {
         model.dots = buildModel(modelSrcCache).dots;
-        renderMap();
+        // HUD/legenda antes do mapa: o apply() inicial mede os painéis
+        // como obstáculos dos rótulos (cache por tamanho do SVG)
         renderHud();
         renderWarnings();
+        renderMap();
         updateIllusBtn();
       }
     });
