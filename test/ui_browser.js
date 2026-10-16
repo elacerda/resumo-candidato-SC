@@ -148,6 +148,52 @@ async function waitFor(c, expr, timeoutMs, label) {
   }
 }
 
+// ---------- visibilidade REAL (renderizada) de #tseFilterRow / #tseSel ----------
+// O atributo .hidden só prova a intenção do app: regras de display do autor
+// (.tse-row{display:flex}, #tseSel{display:block}) sobrescrevem o default do UA
+// ([hidden]{display:none}) se a regra global [hidden]{display:none !important}
+// não existir — por isso checa o computed style e as caixas layoutadas.
+const VIS_EXPR = `(() => {
+  const st = id => {
+    const el = document.getElementById(id);
+    return { hidden: el.hidden, display: getComputedStyle(el).display, rects: el.getClientRects().length };
+  };
+  return { row: st('tseFilterRow'), sel: st('tseSel') };
+})()`;
+async function visState(c) { return evalJs(c, VIS_EXPR, true); }
+function assertVis(tag, v, shown) {
+  for (const [key, id] of [['row', '#tseFilterRow'], ['sel', '#tseSel']]) {
+    const s2 = v[key];
+    const extra = 'hidden=' + s2.hidden + ' display=' + s2.display + ' rects=' + s2.rects;
+    if (shown) check(tag + ': ' + id + ' visível renderizado (display≠none, rects>0)',
+      s2.hidden === false && s2.display !== 'none' && s2.rects > 0, extra);
+    else check(tag + ': ' + id + ' invisível renderizado (display=none, 0 rects)',
+      s2.hidden === true && s2.display === 'none' && s2.rects === 0, extra);
+  }
+}
+
+// bloqueia snapshot (404) + CDN (DNS falha) para forçar listagem sem sucesso
+async function blockedListTab(browser, w, h, mobile) {
+  const t = await newTab(browser, 'about:blank');
+  await metrics(t, w, h, mobile);
+  await t.send('Fetch.enable', {
+    patterns: [
+      { urlPattern: '*/tse_2026/index.json', requestStage: 'Response' },
+      { urlPattern: 'https://cdn.tse.jus.br/*', requestStage: 'Request' }
+    ]
+  });
+  t.on('Fetch.requestPaused', async p => {
+    try {
+      if (p.request.url.includes('cdn.tse.jus.br')) await t.send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'NameNotResolved' });
+      else await t.send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: 404, responseHeaders: [], body: Buffer.from('não encontrado').toString('base64') });
+    } catch (e) { /* noop */ }
+  });
+  await goto(t, BASE + '/');
+  await evalJs(t, `(() => { document.getElementById('btnTseList').click(); return true; })()`, true);
+  await waitFor(t, `!document.getElementById('tseRetry').hidden`, 15000, 'erro de listagem');
+  return t;
+}
+
 // ---------- esperado: top-8 locais por votos (mesma lógica dos testes Node) ----------
 function expected1333() {
   const sample = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/1333_sc_2026.json'), 'utf8'));
@@ -233,6 +279,7 @@ async function main() {
     check('landing: filtro e select ocultos (antes de listar)',
       land.filterRowHidden === true && land.selHidden === true,
       'row=' + land.filterRowHidden + ' sel=' + land.selHidden);
+    assertVis('landing (desktop)', await visState(desktop), false);
     check('landing: parágrafo intro simplificado (sem termos técnicos)',
       land.intro.trim() === 'Consulte um candidato pelo número, utilizando os dados oficiais do TSE (Eleições 2026, 1º turno).',
       land.intro.trim().slice(0, 90));
@@ -378,6 +425,7 @@ async function main() {
     check('lista: filtro + select visíveis + contagem',
       listInfo.filterRowHidden === false && listInfo.selHidden === false && /253 candidatos/.test(listInfo.count),
       listInfo.count);
+    assertVis('lista ok (desktop)', await visState(desktop), true);
     await evalJs(desktop, `(() => {
       const f = document.getElementById('tseFilter');
       f.value = 'andozio';
@@ -416,6 +464,7 @@ async function main() {
       cargoSw.filterRowHidden === true && cargoSw.selHidden === true && cargoSw.nOptions === 0 &&
       cargoSw.filterVal === '' && cargoSw.count === '' && cargoSw.numVal === '',
       JSON.stringify(cargoSw));
+    assertVis('troca de cargo (desktop)', await visState(desktop), false);
     await evalJs(desktop, `(() => { document.getElementById('btnTseList').click(); return true; })()`, true);
     await waitFor(desktop, `!document.getElementById('tseSel').hidden && !document.getElementById('tseFilterRow').hidden`, 8000, 'lista SENADOR');
     const relist = await evalJs(desktop, `(() => ({
@@ -424,6 +473,13 @@ async function main() {
     }))()`, true);
     check('troca de cargo: nova lista reexibe filtro + select',
       relist.n > 0 && /candidato/.test(relist.count), relist.n + ' · ' + relist.count);
+
+    // 2c) listagem sem sucesso (sem snapshot nem CDN): controles seguem invisíveis
+    const dfail = await blockedListTab(browser, 1440, 882, false);
+    check('lista falha (desktop): erro amigável no painel TSE',
+      (await evalJs(dfail, `document.getElementById('tseStatus').classList.contains('error')`, true)) === true);
+    assertVis('lista falha (desktop)', await visState(dfail), false);
+    dfail.close();
 
     // 9) a11y: labels e estrutura
     const a11y = await evalJs(desktop, `(() => ({
@@ -486,7 +542,20 @@ async function main() {
     check('mobile: painel TSE no topo (abaixo da topbar)', Math.abs(mland.panelTop - mland.topbarBottom) < 60, `top=${mland.panelTop} topbar=${mland.topbarBottom}`);
     check('mobile: sem scroll horizontal (landing)', mland.scrollW <= mland.innerW + 1, `scrollW=${mland.scrollW}`);
     check('mobile: filtro e select ocultos (antes de listar)', mland.filterRowHidden === true && mland.selHidden === true);
+    assertVis('landing (mobile)', await visState(mobile), false);
     await shot(mobile, 'm1_landing');
+
+    // 5) lista + troca de cargo no mobile (mesma semântica do desktop)
+    await evalJs(mobile, `(() => { document.getElementById('btnTseList').click(); return true; })()`, true);
+    await waitFor(mobile, `!document.getElementById('tseSel').hidden`, 8000, 'lista mobile');
+    check('mobile: lista 253 candidatos (Deputado Federal)',
+      (await evalJs(mobile, `document.getElementById('tseSel').options.length`, true)) === 253);
+    assertVis('lista ok (mobile)', await visState(mobile), true);
+    await evalJs(mobile, `(() => { document.querySelector('input[name="tseCargo"][value="SENADOR"]').click(); return true; })()`, true);
+    await sleep(60);
+    assertVis('troca de cargo (mobile)', await visState(mobile), false);
+    await evalJs(mobile, `(() => { document.querySelector('input[name="tseCargo"][value="DEPUTADO FEDERAL"]').click(); return true; })()`, true);
+    await sleep(60);
 
     await evalJs(mobile, `(() => {
       document.getElementById('tseNum').value = '1333';
@@ -617,6 +686,13 @@ async function main() {
     check('mobile: tap no marcador abre tooltip (coordenada verificada)', mtap.shown && mtap.full.includes('coordenada verificada'), mtap.txt);
     check('mobile: tap fora fecha o tooltip', mtap.closed);
     check('mobile: sem erros de console/exceção', mobile.consoleErrors.length === 0, mobile.consoleErrors.slice(0, 3).join(' | '));
+
+    // 9b) listagem sem sucesso (sem snapshot nem CDN): controles seguem invisíveis
+    const mfail = await blockedListTab(browser, 390, 844, true);
+    check('lista falha (mobile): erro amigável no painel TSE',
+      (await evalJs(mfail, `document.getElementById('tseStatus').classList.contains('error')`, true)) === true);
+    assertVis('lista falha (mobile)', await visState(mfail), false);
+    mfail.close();
 
     // 10) estados: catálogo indisponível -> ilustrativo por escolha explícita
     const mob2 = await newTab(browser, 'about:blank');

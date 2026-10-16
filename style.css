@@ -4,6 +4,10 @@
   --ok: #34d399; --warn: #fbbf24; --err: #f87171;
 }
 * { box-sizing: border-box; }
+/* O atributo [hidden] deve vencer regras de display do autor
+   (.tse-row{display:flex}, #tseSel{display:block}) — o default do UA
+   ([hidden]{display:none}) é fraco e seria sobrescrito. */
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body {
   background: radial-gradient(1200px 600px at 70% -10%, #141c28 0%, var(--bg) 55%);
