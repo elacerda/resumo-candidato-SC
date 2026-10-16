@@ -12,8 +12,10 @@
  *     (dados reais do snapshot), unicidade, distribuição uniforme;
  *  4) agregados: votos por seção/município/total consistentes;
  *  5) semântica honesta na UI: aria/tooltip afirmam que as posições são
- *     ILUSTRATIVAS (o TSE não publica coordenadas); HUD/legenda/rodapé no
- *     formato original (a pedido).
+ *     ILUSTRATIVAS (o TSE 2026 fornece coordenadas oficiais dos LOCAIS
+ *     de votação; o modo ilustrativo cobre as seções cujo local ainda
+ *     não tem coordenada verificada); HUD/legenda/rodapé no formato
+ *     original (a pedido).
  *
  * Uso: node test/geo_semantics.js
  */

@@ -12,6 +12,8 @@ name: Geo validation (catálogo de georreferenciamento)
 # revisar o artefato 'geo-validation' (diff + relatório + resumo) e
 # publicar o re-gerado manualmente (via PR). Nenhum commit automático
 # neste workflow — por isso permissions: contents: read (e nenhum secret).
+# Diff não vazio entre publicado e re-gerado → aviso explícito no log
+# (REVISÃO HUMANA exigida antes de publicar).
 on:
   workflow_dispatch:
   schedule:
@@ -54,6 +56,14 @@ jobs:
             echo "## Diff reports/geo_cobertura.json"
             diff -u reports/geo_cobertura.json "$RUNNER_TEMP/geo_report.json" || true
           } > geo_diff.txt
+          if [ ! -d "$RUNNER_TEMP/geo_out" ] || [ ! -f "$RUNNER_TEMP/geo_report.json" ]; then
+            echo '::warning::Re-geração incompleta (falha em etapa anterior) — REVISÃO HUMANA exigida antes de qualquer publicação.'
+          elif ! diff -rq data/geo_loc "$RUNNER_TEMP/geo_out" >/dev/null 2>&1 \
+            || ! diff -q reports/geo_cobertura.json "$RUNNER_TEMP/geo_report.json" >/dev/null 2>&1; then
+            echo '::notice::Diff NÃO VAZIO entre o catálogo publicado (data/geo_loc) e o re-gerado — REVISÃO HUMANA exigida antes de publicar (artefato geo-validation: diff + relatório + resumo).'
+          else
+            echo '::notice::Catálogos idênticos (publicado x re-gerado) — nada a revisar.'
+          fi
           python3 - "$RUNNER_TEMP/geo_report.json" <<'PY'
           import json, sys
           r = json.load(open(sys.argv[1], encoding='utf-8'))['resumo']

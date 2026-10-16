@@ -417,7 +417,11 @@
         dots.push({ x: m.x, y: m.y, r: Core.dotR(m.votes), kind: 'loc', loc: m });
       }
       // opcional: seções sem coordenada em MODO ILUSTRATIVO (estilo
-      // distinto: círculo oco — nunca confundível com marcador verificado)
+      // distinto: círculo oco — nunca confundível com marcador verificado).
+      // O TSE 2026 fornece coordenadas oficiais dos LOCAIS de votação; o
+      // modo ilustrativo cobre apenas as seções cujo local ainda não tem
+      // coordenada verificada no catálogo (alguns locais seguem sem
+      // resolver — reports/geo_cobertura.json).
       if (showIllus) {
         const illus = ds.sections.filter(s => s.locIdx < 0)
           .sort((a, b) => (a.muni + a.zona + a.secao) < (b.muni + b.zona + b.secao) ? -1 : 1);
@@ -730,11 +734,10 @@
         `<div class="v">${m.votes} ${m.votes === 1 ? 'voto' : 'votos'} em ${m.secs.length} seção(ões)</div>`;
     }
     function showTip(dt, cx, cy) {
+      // dt.kind: 'loc' (marcador verificado) ou 'sec-ill' (modo ilustrativo).
       tip.innerHTML = dt.kind === 'loc'
         ? tipLoc(dt.loc)
-        : tipSec(dt.s, dt.kind === 'sec-ill'
-            ? 'posição ILUSTRATIVA — sem coordenada verificada'
-            : 'posição ilustrativa dentro do município (o TSE não publica coordenadas)');
+        : tipSec(dt.s, 'posição ILUSTRATIVA — sem coordenada verificada');
       tip.style.display = 'block';
       const bw = tip.offsetWidth, bh = tip.offsetHeight;
       let x = cx + 14, y = cy + 14;

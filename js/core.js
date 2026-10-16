@@ -2,8 +2,10 @@
  * MT19937 bit-idêntico ao CPython (random.Random). Posicionamento das
  * seções: sorteio determinístico e uniforme DENTRO do polígono do
  * município, seedeado pela IDENTIDADE da seção (município + zona +
- * seção). Os pontos são ILUSTRATIVOS: o TSE não publica coordenadas
- * das seções — ver README ("Semântica geográfica do mapa"). */
+ * seção). Os pontos são ILUSTRATIVOS (fallback para o catálogo
+ * data/geo_loc): o TSE 2026 fornece coordenadas oficiais dos LOCAIS
+ * de votação, mas alguns locais seguem sem coordenada verificada —
+ * ver README ("Semântica geográfica do mapa"). */
 (function (root) {
   'use strict';
 
