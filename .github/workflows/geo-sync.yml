@@ -13,7 +13,9 @@ name: Geo validation (catálogo de georreferenciamento)
 # publicar o re-gerado manualmente (via PR). Nenhum commit automático
 # neste workflow — por isso permissions: contents: read (e nenhum secret).
 # Diff não vazio entre publicado e re-gerado → aviso explícito no log
-# (REVISÃO HUMANA exigida antes de publicar).
+# (REVISÃO HUMANA exigida antes de publicar). Re-geração com fonte(s) do
+# catálogo publicado ausente(s) → aviso explícito de NÃO publicar (a
+# integridade das fontes degradau, mesmo com cobertura inalterada).
 on:
   workflow_dispatch:
   schedule:
@@ -64,7 +66,7 @@ jobs:
           else
             echo '::notice::Catálogos idênticos (publicado x re-gerado) — nada a revisar.'
           fi
-          python3 - "$RUNNER_TEMP/geo_report.json" <<'PY'
+          python3 - "$RUNNER_TEMP/geo_report.json" "$RUNNER_TEMP/geo_out/index.json" <<'PY'
           import json, sys
           r = json.load(open(sys.argv[1], encoding='utf-8'))['resumo']
           pub = json.load(open('reports/geo_cobertura.json', encoding='utf-8'))['resumo']
@@ -75,6 +77,15 @@ jobs:
               print('::warning::Re-geração verificou MENOS locais que o catálogo '
                     'publicado — provável fonte indisponível nesta execução; '
                     'NÃO publicar este re-gerado.')
+          ipub = json.load(open('data/geo_loc/index.json', encoding='utf-8'))
+          ireg = json.load(open(sys.argv[2], encoding='utf-8'))
+          fpub, freg = ipub.get('fontes') or {}, ireg.get('fontes') or {}
+          lost = sorted(k for k, v in fpub.items() if v and not freg.get(k))
+          if lost:
+              print('::warning::Fonte(s) do catálogo publicado ausente(s) na '
+                    're-geração: ' + ', '.join(lost) +
+                    ' — integridade de fontes degradada; NÃO publicar o '
+                    'catálogo re-gerado até restaurar a integridade das fontes.')
           PY
       - name: Publicar artefato de validação
         if: always()
