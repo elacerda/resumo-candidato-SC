@@ -139,6 +139,9 @@ votos, local, end}], candidato?, numero?, cargo?, eleicao?, fonte?}`.
 ```
 node test/app_smoke.js     # app com DOM shim: exemplo 1333 (3397 dots), validação de erro
 node test/snapshot_app.js  # modo snapshot: mapa/lista por número + fallback CDN com "Failed to fetch"
+node test/tse_panel_ux.js  # painel TSE (UX): parágrafo intro simplificado, #tseFilterRow/#tseSel
+                           # ocultos no início, visíveis só após lista bem-sucedida, reset na
+                           # troca de cargo, falha mantém oculto, "Mostrar mapa" direto preservado
 node test/geo_semantics.js # correção geográfica: join TSE→IBGE (295/295), referências de cidades
                            # (Wikipedia), identidade/contenção/estabilidade dos pontos, agregados,
                            # semântica honesta na UI (DOM shim)

@@ -1062,6 +1062,7 @@
       r.addEventListener('change', () => {
         const sel = $('tseSel');
         sel.hidden = true;
+        sel.innerHTML = ''; // reseta opções/valor do cargo anterior
         $('tseNum').value = '';
         $('tseFilterRow').hidden = true;
         $('tseFilter').value = '';
@@ -1117,6 +1118,7 @@
       $('fileActions').hidden = true;
       $('dropZone').classList.remove('hidden');
       $('tseSel').hidden = true;
+      $('tseSel').innerHTML = '';
       $('tseFilterRow').hidden = true;
       $('tseFilter').value = '';
       $('tseFilterCount').textContent = '';

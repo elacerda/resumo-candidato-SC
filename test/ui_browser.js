@@ -219,6 +219,9 @@ async function main() {
         panelTop: Math.round(pr.top), dropTop: Math.round(dr.top),
         btnTseActive: document.getElementById('btnTse').classList.contains('active'),
         hero: (document.querySelector('#tsePanel h2') || {}).textContent || '',
+        intro: (document.querySelector('#tsePanel p.dim') || {}).textContent || '',
+        filterRowHidden: document.getElementById('tseFilterRow').hidden,
+        selHidden: document.getElementById('tseSel').hidden,
         scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth
       };
     })()`, true);
@@ -227,6 +230,12 @@ async function main() {
     check('landing: título hero no painel TSE', /Mapa de seções por candidato/.test(land.hero), land.hero);
     check('landing: btnTse ativo (painel aberto)', land.btnTseActive);
     check('landing: sem scroll horizontal', land.scrollW <= land.innerW + 1, `scrollW=${land.scrollW}`);
+    check('landing: filtro e select ocultos (antes de listar)',
+      land.filterRowHidden === true && land.selHidden === true,
+      'row=' + land.filterRowHidden + ' sel=' + land.selHidden);
+    check('landing: parágrafo intro simplificado (sem termos técnicos)',
+      land.intro.trim() === 'Consulte um candidato pelo número, utilizando os dados oficiais do TSE (Eleições 2026, 1º turno).',
+      land.intro.trim().slice(0, 90));
     await shot(desktop, 'd1_landing');
 
     // 2) busca: número 1333 -> mapa (snapshot, sem download)
@@ -362,10 +371,13 @@ async function main() {
     const listInfo = await evalJs(desktop, `(() => ({
       nOptions: document.getElementById('tseSel').options.length,
       filterRowHidden: document.getElementById('tseFilterRow').hidden,
+      selHidden: document.getElementById('tseSel').hidden,
       count: document.getElementById('tseFilterCount').textContent
     }))()`, true);
     check('lista: 253 candidatos (Deputado Federal)', listInfo.nOptions === 253, String(listInfo.nOptions));
-    check('lista: filtro visível + contagem', listInfo.filterRowHidden === false && /253 candidatos/.test(listInfo.count), listInfo.count);
+    check('lista: filtro + select visíveis + contagem',
+      listInfo.filterRowHidden === false && listInfo.selHidden === false && /253 candidatos/.test(listInfo.count),
+      listInfo.count);
     await evalJs(desktop, `(() => {
       const f = document.getElementById('tseFilter');
       f.value = 'andozio';
@@ -388,6 +400,30 @@ async function main() {
     })()`, true);
     await sleep(60);
     check('filtro limpo: lista completa volta (253)', (await evalJs(desktop, `document.getElementById('tseSel').options.length`, true)) === 253);
+
+    // 2b) troca de cargo: reseta e oculta filtro + select até nova lista
+    await evalJs(desktop, `(() => { document.querySelector('input[name="tseCargo"][value="SENADOR"]').click(); return true; })()`, true);
+    await sleep(60);
+    const cargoSw = await evalJs(desktop, `(() => ({
+      filterRowHidden: document.getElementById('tseFilterRow').hidden,
+      selHidden: document.getElementById('tseSel').hidden,
+      nOptions: document.getElementById('tseSel').options.length,
+      filterVal: document.getElementById('tseFilter').value,
+      count: document.getElementById('tseFilterCount').textContent,
+      numVal: document.getElementById('tseNum').value
+    }))()`, true);
+    check('troca de cargo: filtro + select ocultos e resetados',
+      cargoSw.filterRowHidden === true && cargoSw.selHidden === true && cargoSw.nOptions === 0 &&
+      cargoSw.filterVal === '' && cargoSw.count === '' && cargoSw.numVal === '',
+      JSON.stringify(cargoSw));
+    await evalJs(desktop, `(() => { document.getElementById('btnTseList').click(); return true; })()`, true);
+    await waitFor(desktop, `!document.getElementById('tseSel').hidden && !document.getElementById('tseFilterRow').hidden`, 8000, 'lista SENADOR');
+    const relist = await evalJs(desktop, `(() => ({
+      n: document.getElementById('tseSel').options.length,
+      count: document.getElementById('tseFilterCount').textContent
+    }))()`, true);
+    check('troca de cargo: nova lista reexibe filtro + select',
+      relist.n > 0 && /candidato/.test(relist.count), relist.n + ' · ' + relist.count);
 
     // 9) a11y: labels e estrutura
     const a11y = await evalJs(desktop, `(() => ({
@@ -441,12 +477,15 @@ async function main() {
         panelHidden: document.getElementById('tsePanel').hidden,
         panelTop: Math.round(p.top), dropTop: Math.round(dz.top),
         topbarBottom: Math.round(tb.bottom),
+        filterRowHidden: document.getElementById('tseFilterRow').hidden,
+        selHidden: document.getElementById('tseSel').hidden,
         scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth
       };
     })()`, true);
     check('mobile: painel TSE visível na carga', mland.panelHidden === false);
     check('mobile: painel TSE no topo (abaixo da topbar)', Math.abs(mland.panelTop - mland.topbarBottom) < 60, `top=${mland.panelTop} topbar=${mland.topbarBottom}`);
     check('mobile: sem scroll horizontal (landing)', mland.scrollW <= mland.innerW + 1, `scrollW=${mland.scrollW}`);
+    check('mobile: filtro e select ocultos (antes de listar)', mland.filterRowHidden === true && mland.selHidden === true);
     await shot(mobile, 'm1_landing');
 
     await evalJs(mobile, `(() => {
