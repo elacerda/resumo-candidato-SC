@@ -1,39 +1,75 @@
-name: TSE sync (snapshot 2026)
-
-# Re-gera o snapshot de seções/votos (data/tse_2026) a partir dos zips
-# oficiais do TSE e commita as mudanças. Assim o app consulta candidatos
-# por número na mesma origem do Pages, sem baixar o CSV no navegador.
+name: TSE sync (EA20 e seções)
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 6 * * *'   # 06:00 UTC (03:00 Brasília)
+    - cron: '0 6 * * *'
   push:
     branches: [main]
     paths:
       - 'sync/tse_sync.py'
+      - 'sync/ea20_sync.py'
+      - 'sync/snapshot_format.py'
+      - 'sync/source_compare.py'
+      - 'test/**'
+      - 'js/**'
       - '.github/workflows/tse-sync.yml'
-
 permissions:
-  contents: write
-
+  contents: read
+concurrency:
+  group: tse-validation
+  cancel-in-progress: false
 jobs:
-  sync:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Gerar snapshot
-        run: python3 sync/tse_sync.py --out data/tse_2026
-      - name: Commitar snapshot
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/cache@v4
+        with:
+          path: cache/http
+          key: tse-http-${{ github.run_id }}
+          restore-keys: tse-http-
+      - name: Capturar EA11/EA20 oficiais (falha interrompe publicação)
+        run: python3 sync/ea20_sync.py
+      - name: Gerar seções com cache HTTP validado
+        run: python3 sync/tse_sync.py --review-only
+      - name: Validar identidade, votos, referências e comparação de fontes
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/tse_2026
-          if git diff --cached --quiet; then
-            echo "Snapshot sem mudanças; nada a commitar."
-          else
-            git commit -m "chore(tse): atualiza snapshot 2026 ($(date -u +%Y-%m-%d))"
-            git push
-          fi
+          node test/electoral_data.js
+          python3 test/snapshot_format_check.py
+          node test/snapshot_app.js
+          node test/geo_semantics.js
+          node test/app_smoke.js
+          node test/tse_panel_ux.js
+          python3 test/source_compare_check.py
+      - name: Validar interface e rótulos no Chrome real
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          node test/ui_browser.js --shot
+          node test/labels_browser.js
+      - name: Disponibilizar diagnóstico para revisão (não promovível)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tse-revisao-${{ github.run_id }}
+          path: |
+            data/ea20/
+            data/tse_2026/
+            reports/eleitoral_comparacao.json
+      - name: Bloquear promoção sem equivalência ou aprovação vinculada ao relatório
+        run: python3 sync/source_compare.py --approval reports/eleitoral_aprovacao.json
+      - name: Disponibilizar conjunto elegível à promoção manual
+        uses: actions/upload-artifact@v4
+        with:
+          name: tse-elegivel-${{ github.run_id }}
+          path: |
+            data/ea20/
+            data/tse_2026/
+            reports/eleitoral_comparacao.json
+            reports/eleitoral_aprovacao.json

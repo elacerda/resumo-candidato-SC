@@ -179,6 +179,7 @@ async function blockedListTab(browser, w, h, mobile) {
   await t.send('Fetch.enable', {
     patterns: [
       { urlPattern: '*/tse_2026/index.json', requestStage: 'Response' },
+        { urlPattern: '*/ea20/index.json', requestStage: 'Response' },
       { urlPattern: 'https://cdn.tse.jus.br/*', requestStage: 'Request' }
     ]
   });
@@ -250,6 +251,93 @@ async function main() {
   const mobile = await newTab(browser, 'about:blank');
 
   try {
+    // EA20 em HTTP estático: capturas versionadas, sem depender da rede real.
+    const aggregateTab = await newTab(browser, 'about:blank');
+    await metrics(aggregateTab, 390, 844, true);
+    const requested = [];
+    await aggregateTab.send('Network.enable');
+    aggregateTab.on('Network.requestWillBeSent', e => requested.push(e.request.url));
+    await aggregateTab.send('Fetch.enable', { patterns: [{ urlPattern: 'https://resultados.tse.jus.br/*', requestStage: 'Request' }] });
+    let denyCors = false;
+    aggregateTab.on('Fetch.requestPaused', async p => {
+      try {
+        if (denyCors) { await aggregateTab.send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'AccessDenied' }); return; }
+        const name = p.request.url.includes('-z0012-') ? 'zona' : 'municipio';
+        await aggregateTab.send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: 200,
+          responseHeaders: [{ name: 'Content-Type', value: 'application/json' }, { name: 'Access-Control-Allow-Origin', value: '*' }],
+          body: fs.readFileSync(path.join(ROOT, 'test/fixtures/ea20', name + '.json')).toString('base64') });
+      } catch (e) { aggregateTab.consoleErrors.push(e.message); }
+    });
+    await goto(aggregateTab, BASE + '/');
+    await evalJs(aggregateTab, `document.getElementById('tseNum').value = '1333'; document.getElementById('btnAggregate').click()`);
+    await waitFor(aggregateTab, `!document.getElementById('aggregateResult').hidden`, 8000, 'agregado estadual');
+    const aggText = await evalJs(aggregateTab, `document.getElementById('aggregateResult').textContent`);
+    check('EA20: agregado estadual real 1333 = 4.876', /4\.876/.test(aggText) && /JULIANA ANDOZIO/.test(aggText), aggText.slice(0, 120));
+    check('EA20: turno, data e totalização identificados', /1º turno/.test(aggText) && /24\/10\/2026/.test(aggText) && /totalização final/.test(aggText));
+    check('EA20: não cria mapa ou seções artificiais', await evalJs(aggregateTab, `document.getElementById('results').hidden && !document.querySelector('#mapBox svg')`));
+    await evalJs(aggregateTab, `document.getElementById('btnAggregateJson').click()`);
+    await waitForDownload('resultado-agregado.json', 8000);
+    const aggFile = downloadFile('resultado-agregado.json');
+    check('EA20: exportação contém origem, categoria e total', !!aggFile && JSON.parse(fs.readFileSync(aggFile, 'utf8')).candidatos.some(c => c.numero === '1333' && c.votos === 4876 && c.categoria === 'nominal'));
+    await shot(aggregateTab, 'm5_aggregate');
+    for (const control of ['cargo', 'tseTurno', 'tseMunicipio', 'tseZona']) {
+      await evalJs(aggregateTab, `(() => {
+        const control = ${JSON.stringify(control)};
+        const el = control === 'cargo' ? document.querySelector('input[value="SENADOR"]') : document.getElementById(control);
+        if (control === 'cargo') el.checked = true;
+        else el.value = control === 'tseTurno' ? '2' : control === 'tseMunicipio' ? '81051' : '12';
+        el.dispatchEvent(new Event(control === 'tseZona' ? 'input' : 'change', {bubbles:true}));
+      })()`);
+      check('R02: ' + control + ' limpa painel e exportação', await evalJs(aggregateTab, `document.getElementById('aggregateResult').hidden && document.getElementById('aggregateResult').innerHTML === '' && document.getElementById('btnAggregateJson').hidden`));
+      await evalJs(aggregateTab, `(() => {
+        const radio = document.querySelector('input[value="DEPUTADO FEDERAL"]'); radio.checked = true; radio.dispatchEvent(new Event('change'));
+        document.getElementById('tseTurno').value = '1';
+        document.getElementById('tseMunicipio').value = ''; document.getElementById('tseZona').value = '';
+        document.getElementById('tseNum').value = '1333'; document.getElementById('btnAggregate').click();
+      })()`);
+      await waitFor(aggregateTab, `!document.getElementById('aggregateResult').hidden`, 8000, 'restaurar agregado após ' + control);
+    }
+
+    await waitFor(aggregateTab, `document.getElementById('tseMunicipio').options.length === 296`, 8000, 'municípios oficiais');
+    await evalJs(aggregateTab, `document.getElementById('tseMunicipio').value = '81051'; document.getElementById('btnAggregate').click()`);
+    await waitFor(aggregateTab, `!document.getElementById('aggregateResult').hidden`, 8000, 'agregado municipal');
+    check('EA20: município usa código oficial e votos oficiais', await evalJs(aggregateTab, `/mu 81051/.test(document.getElementById('aggregateResult').textContent) && /1\\.745/.test(document.getElementById('aggregateResult').textContent)`));
+    await evalJs(aggregateTab, `document.getElementById('tseZona').value = '12'; document.getElementById('btnAggregate').click()`);
+    await waitFor(aggregateTab, `!document.getElementById('aggregateResult').hidden`, 8000, 'agregado por zona');
+    check('EA20: zona identificada', await evalJs(aggregateTab, `/zona 0012/.test(document.getElementById('aggregateResult').textContent)`));
+    denyCors = true;
+    await evalJs(aggregateTab, `document.getElementById('tseZona').value = '13'; document.getElementById('btnAggregate').click()`);
+    await waitFor(aggregateTab, `!document.getElementById('tseRetry').hidden`, 8000, 'falha CORS');
+    check('EA20: CORS indisponível tem erro e retry', await evalJs(aggregateTab, `/Falha de rede/.test(document.getElementById('tseStatusText').textContent) && document.getElementById('aggregateResult').hidden && document.getElementById('btnAggregateJson').hidden`));
+    await evalJs(aggregateTab, `document.getElementById('tseMunicipio').value = ''; document.getElementById('tseZona').value = ''; document.getElementById('tseTurno').value = '2'; document.querySelector('input[value="PRESIDENTE"]').checked = true; document.getElementById('tseNum').value = '22'; document.getElementById('btnTseMap').click()`);
+    await waitFor(aggregateTab, `!document.getElementById('aggregateResult').hidden`, 8000, 'segundo turno sem seções');
+    check('EA20: sem seções de 2º turno preserva agregado válido', await evalJs(aggregateTab, `/2º turno/.test(document.getElementById('aggregateResult').textContent) && document.getElementById('results').hidden`));
+    check('EA20: mobile sem overflow horizontal', await evalJs(aggregateTab, `document.documentElement.scrollWidth <= innerWidth`));
+    check('EA20: nenhuma requisição de ZIP', requested.every(u => !/\.zip(?:$|\?)/i.test(u)));
+    aggregateTab.close();
+    // R02: HTTP atrasado após troca de cargo não restaura a listagem antiga.
+    const raceTab = await newTab(browser, 'about:blank');
+    await goto(raceTab, BASE + '/');
+    await evalJs(raceTab, `(() => {
+      const originalFetch = window.fetch;
+      window.fetch = async (...args) => {
+        const response = await originalFetch(...args);
+        if (String(args[0]).includes('dep_federal-1.json')) {
+          await new Promise(resolve => { window.releaseOldElectoral = resolve; });
+        }
+        return response;
+      };
+      document.getElementById('btnTseList').click();
+    })()`);
+    await waitFor(raceTab, `typeof window.releaseOldElectoral === 'function'`, 8000, 'HTTP eleitoral atrasado');
+    await evalJs(raceTab, `document.querySelector('input[value="SENADOR"]').click(); document.getElementById('btnTseList').click()`);
+    await waitFor(raceTab, `!document.getElementById('tseSel').hidden`, 8000, 'lista atual de senador');
+    await evalJs(raceTab, `window.releaseOldElectoral()`);
+    await sleep(200);
+    check('R02: resposta HTTP antiga descartada após troca', await evalJs(raceTab, `document.getElementById('tseSel').options.length === 13 && !Array.from(document.getElementById('tseSel').options).some(o => o.value === '1333')`));
+    raceTab.close();
+
+
     // ================= DESKTOP 1440x882 =================
     console.log('\n== desktop 1440x882 ==');
     await metrics(desktop, 1440, 882, false);
@@ -421,11 +509,19 @@ async function main() {
       selHidden: document.getElementById('tseSel').hidden,
       count: document.getElementById('tseFilterCount').textContent
     }))()`, true);
-    check('lista: 253 candidatos (Deputado Federal)', listInfo.nOptions === 253, String(listInfo.nOptions));
+    check('lista: 229 candidatos (Deputado Federal)', listInfo.nOptions === 229, String(listInfo.nOptions));
     check('lista: filtro + select visíveis + contagem',
-      listInfo.filterRowHidden === false && listInfo.selHidden === false && /253 candidatos/.test(listInfo.count),
+      listInfo.filterRowHidden === false && listInfo.selHidden === false && /229 candidatos/.test(listInfo.count),
       listInfo.count);
     assertVis('lista ok (desktop)', await visState(desktop), true);
+    check('R02: cinco históricos federais em grupo próprio', await evalJs(desktop, `Array.from(document.querySelectorAll('#tseSel optgroup')).some(g => /Histórico por seção — sem cadastro atual no EA20/.test(g.label) && g.children.length === 5)`));
+    check('R02: seis classificações de votos anulados federais', await evalJs(desktop, `Array.from(document.getElementById('tseSel').options).filter(o => /Anulado/.test(o.text)).length === 6`));
+    check('R02: seleção posterior à digitação prevalece', await evalJs(desktop, `(() => {
+      document.getElementById('tseNum').value = '1333';
+      const sel = document.getElementById('tseSel'); sel.value = '2233'; sel.dispatchEvent(new Event('change'));
+      return document.getElementById('tseNum').value === '2233';
+    })()`));
+
     await evalJs(desktop, `(() => {
       const f = document.getElementById('tseFilter');
       f.value = 'andozio';
@@ -439,7 +535,7 @@ async function main() {
                count: document.getElementById('tseFilterCount').textContent };
     })()`, true);
     check('filtro "andozio": só o 1333', filt.n === 1 && filt.val === '1333' && /1333/.test(filt.txt), filt.n + ' ' + filt.txt);
-    check('filtro: contagem "1 de 253 candidatos"', filt.count === '1 de 253 candidatos', filt.count);
+    check('filtro: contagem "1 de 229 candidatos"', filt.count === '1 de 229 candidatos', filt.count);
     await evalJs(desktop, `(() => {
       const f = document.getElementById('tseFilter');
       f.value = '';
@@ -447,7 +543,7 @@ async function main() {
       return true;
     })()`, true);
     await sleep(60);
-    check('filtro limpo: lista completa volta (253)', (await evalJs(desktop, `document.getElementById('tseSel').options.length`, true)) === 253);
+    check('filtro limpo: lista completa volta (229)', (await evalJs(desktop, `document.getElementById('tseSel').options.length`, true)) === 229);
 
     // 2b) troca de cargo: reseta e oculta filtro + select até nova lista
     await evalJs(desktop, `(() => { document.querySelector('input[name="tseCargo"][value="SENADOR"]').click(); return true; })()`, true);
@@ -548,8 +644,8 @@ async function main() {
     // 5) lista + troca de cargo no mobile (mesma semântica do desktop)
     await evalJs(mobile, `(() => { document.getElementById('btnTseList').click(); return true; })()`, true);
     await waitFor(mobile, `!document.getElementById('tseSel').hidden`, 8000, 'lista mobile');
-    check('mobile: lista 253 candidatos (Deputado Federal)',
-      (await evalJs(mobile, `document.getElementById('tseSel').options.length`, true)) === 253);
+    check('mobile: lista 229 candidatos (Deputado Federal)',
+      (await evalJs(mobile, `document.getElementById('tseSel').options.length`, true)) === 229);
     assertVis('lista ok (mobile)', await visState(mobile), true);
     await evalJs(mobile, `(() => { document.querySelector('input[name="tseCargo"][value="SENADOR"]').click(); return true; })()`, true);
     await sleep(60);
@@ -742,6 +838,7 @@ async function main() {
     await mob3.send('Fetch.enable', {
       patterns: [
         { urlPattern: '*/tse_2026/index.json', requestStage: 'Response' },
+        { urlPattern: '*/ea20/index.json', requestStage: 'Response' },
         { urlPattern: 'https://cdn.tse.jus.br/*', requestStage: 'Request' }
       ]
     });
@@ -765,7 +862,7 @@ async function main() {
       retry: !document.getElementById('tseRetry').hidden,
       panelHidden: document.getElementById('tsePanel').hidden
     }))()`, true);
-    check('erro de rede: mensagem amigável (Falha de rede…)', /Falha de rede/.test(neterr.text), neterr.text.slice(0, 70));
+    check('erro de rede: mensagem amigável (Falha de rede…)', /Resultados agregados indisponíveis/.test(neterr.text), neterr.text.slice(0, 70));
     check('erro de rede: modo de erro + "Tentar novamente"', neterr.isErr && neterr.retry);
     check('erro de rede: painel TSE permanece aberto (sem resultados)', neterr.panelHidden === false);
     await shot(mob3, 'm3_neterror');

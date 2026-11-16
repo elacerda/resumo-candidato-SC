@@ -36,22 +36,28 @@
         <label class="radio"><input type="radio" name="tseCargo" value="SENADOR"> Senador</label>
         <span class="tse-gap" aria-hidden="true">|</span>
         <label class="radio"><input type="radio" name="tseCargo" value="PRESIDENTE"> Presidente</label>
-        <span class="tse-size">arquivo: <b id="tseSize">74,5</b> MB</span>
+
       </div>
     </fieldset>
-    <p id="tseBig" class="tse-big" hidden>⚠ O arquivo do Presidente é o conjunto nacional (154 MB) —
-    o primeiro carregamento pode demorar conforme a sua conexão.</p>
+    <div class="tse-row"><label for="tseTurno">Turno</label><select id="tseTurno" class="input"><option value="1">1º turno</option><option value="2">2º turno (conforme disponibilidade oficial)</option></select></div>
     <div class="tse-row">
       <label class="tse-lbl" for="tseNum">número do candidato</label>
       <input id="tseNum" class="input" inputmode="numeric" maxlength="6" placeholder="ex.: 1333" aria-describedby="tseStatus">
       <button id="btnTseList" class="btn">Listar candidatos</button>
+      <button id="btnAggregate" class="btn">Resultado agregado</button>
       <button id="btnTseMap" class="btn primary">Mostrar mapa</button>
     </div>
     <div class="tse-row" id="tseFilterRow" hidden>
       <input id="tseFilter" class="input" type="search" placeholder="Filtrar por nome ou número…" aria-label="Filtrar candidatos por nome ou número">
       <span id="tseFilterCount" class="tse-size" role="status"></span>
     </div>
-    <select id="tseSel" class="input" hidden></select>
+    <details><summary>Consultar município e zona no resultado agregado</summary>
+      <div class="tse-row"><label for="tseMunicipio">Município</label><select id="tseMunicipio" class="input"><option value="">Santa Catarina (estado inteiro)</option></select>
+      <label for="tseZona">Zona (opcional)</label><input id="tseZona" class="input" inputmode="numeric" maxlength="4" placeholder="ex.: 12"></div>
+      <p class="dim">Escolha o município e, se desejar, informe a zona. A consulta territorial depende de acesso ao TSE; se indisponível, tente novamente. Não inclui votos por seção.</p></details>
+    <div id="aggregateResult" hidden aria-live="polite"></div>
+    <button id="btnAggregateJson" class="btn" hidden>Exportar agregado JSON</button>
+    <select id="tseSel" class="input" aria-label="Candidatos atuais e históricos; classificação dos votos" hidden></select>
     <div id="tseStatus" class="tse-status" hidden>
       <div id="tseStatusText" aria-live="polite"></div>
       <div class="tse-bar-wrap"><div id="tseBar" class="tse-bar"></div></div>
@@ -134,9 +140,11 @@
 
 <div id="tip"></div>
 
-<script src="js/fflate.js"></script>
+
 <script src="js/core.js"></script>
-<script src="js/tse.js"></script>
+<script src="js/ea20.js"></script>
+<script src="js/snapshots.js"></script>
+<script src="js/electoral.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

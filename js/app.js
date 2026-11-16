@@ -62,129 +62,50 @@
     return geoCatPromise;
   }
 
-  // ---- dados oficiais TSE (download no navegador, cache IndexedDB) ----
-  const TSE_BASE = 'https://cdn.tse.jus.br/estatistica/sead/odsele/votacao_secao/';
-  const TSE_CARGOS = [
-    { id: 'DEPUTADO FEDERAL', label: 'Deputado Federal', file: 'votacao_secao_2026_SC.zip', sizeMB: 74.5 },
-    { id: 'DEPUTADO ESTADUAL', label: 'Deputado Estadual', file: 'votacao_secao_2026_SC.zip', sizeMB: 74.5 },
-    { id: 'GOVERNADOR', label: 'Governador', file: 'votacao_secao_2026_SC.zip', sizeMB: 74.5 },
-    { id: 'SENADOR', label: 'Senador', file: 'votacao_secao_2026_SC.zip', sizeMB: 74.5 },
-    { id: 'PRESIDENTE', label: 'Presidente', file: 'votacao_secao_2026_BR.zip', sizeMB: 154 }
-  ];
-  const tseMem = new Map();  // file -> {bytes, csv}
-  let tseBusy = false;
-  let tseListFull = [];      // lista completa do cargo atual (ordem por votos)
-  let tseAbort = null;      // AbortController do download em curso
-  let tseRetryFn = null;   // última ação TSE (botão Tentar novamente)
-  const IDB_NAME = 'resumo-candidato-cache', IDB_STORE = 'files';
-  function idbOpen() {
-    return new Promise((res, rej) => {
-      const r = indexedDB.open(IDB_NAME, 1);
-      r.onupgradeneeded = () => r.result.createObjectStore(IDB_STORE);
-      r.onsuccess = () => res(r.result);
-      r.onerror = () => rej(r.error);
-    });
-  }
-  async function idbGet(key) {
-    const db = await idbOpen();
-    return new Promise((res, rej) => {
-      const rq = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(key);
-      rq.onsuccess = () => res(rq.result == null ? null : rq.result);
-      rq.onerror = () => rej(rq.error);
-    });
-  }
-  async function idbSet(key, val) {
-    const db = await idbOpen();
-    return new Promise((res, rej) => {
-      const tx = db.transaction(IDB_STORE, 'readwrite');
-      tx.objectStore(IDB_STORE).put(val, key);
-      tx.oncomplete = () => res();
-      tx.onerror = () => rej(tx.error);
-    });
-  }
-  async function fetchTseFile(filename, onProgress, signal) {
-    const url = TSE_BASE + filename;
-    let bytes = tseMem.get(filename);
-    if (bytes) return bytes;
-    if (typeof indexedDB !== 'undefined') {
-      try { const c = await idbGet(url); if (c) { bytes = c; tseMem.set(filename, bytes); onProgress({ phase: 'cached' }); return bytes; } }
-      catch (e) { /* cache indisponível */ }
-    }
-    const res = await fetch(url, signal ? { signal } : undefined);
-    if (!res.ok) throw new Error('HTTP ' + res.status + ' ao baixar ' + filename);
-    const total = +res.headers.get('content-length') || 0;
-    const bufs = [];
-    let got = 0;
-    const reader = res.body.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      bufs.push(value);
-      got += value.length;
-      onProgress({ phase: 'download', got, total });
-    }
-    bytes = new Uint8Array(got);
-    let o = 0;
-    for (const b of bufs) { bytes.set(b, o); o += b.length; }
-    tseMem.set(filename, bytes);
-    if (typeof indexedDB !== 'undefined') idbSet(url, bytes).catch(() => {});
-    return bytes;
-  }
-  async function getTseCsv(filename, onProgress, signal) {
-    let entry = tseMem.get(filename);
-    if (entry && entry.csv) return entry.csv;
-    const bytes = await fetchTseFile(filename, onProgress, signal);
-    if (!entry) entry = { bytes };
-    if (entry.csv) return entry.csv;
-    onProgress({ phase: 'unzip' });
-    await new Promise(r => setTimeout(r, 30)); // pinta o status antes do unzip síncrono
-    const entries = window.fflate.unzipSync(bytes);
-    const csv = Object.values(entries).find(v => v.length > 1e6) || Object.values(entries)[0];
-    entry.csv = csv;
-    return csv;
-  }
-  // ---- snapshot TSE: pré-computado no repositório (sync/tse_sync.py + GitHub
-  // Actions). Consulta por número sem baixar o CSV do CDN; o download direto
-  // continua funcionando como fallback. ----
-  const SNAP_BASE = 'data/tse_2026/';
-  const snapMem = new Map();      // nome de arquivo -> JSON parseado
-  let snapIndex = null;           // index.json (null = indisponível; re-tenta até carregar)
+  const TSE_CARGOS = ['DEPUTADO FEDERAL', 'DEPUTADO ESTADUAL', 'GOVERNADOR', 'SENADOR', 'PRESIDENTE']
+    .map(id => ({ id, label: id.toLowerCase().replace(/(^| )\S/g, c => c.toUpperCase()) }));
+  let tseBusy = false, tseListFull = [], tseRetryFn = null, snapIndex = null;
+  const snapshots = window.Snapshots.createClient(url => fetch(url));
+  const electoral = window.Electoral.createService(url => fetch(url), snapshots, window.Ea20.createClient(url => fetch(url)));
+  const turno = () => $('tseTurno').value || '1';
   async function getSnapIndex() {
-    if (snapIndex) return snapIndex;
-    try {
-      const res = await fetch(SNAP_BASE + 'index.json');
-      if (res.ok) snapIndex = await res.json();
-    } catch (e) { /* sem snapshot -> fallback CDN */ }
+    try { snapIndex = await snapshots.index(); } catch (e) { return null; }
     return snapIndex;
   }
-  async function getSnapFile(name) {
-    const hit = snapMem.get(name);
-    if (hit) return hit;
-    const res = await fetch(SNAP_BASE + name);
-    if (!res.ok) throw new Error('HTTP ' + res.status + ' em ' + name);
-    const j = await res.json();
-    snapMem.set(name, j);
-    return j;
+  async function snapDataset(cargoId, numero, selectedTurno) {
+    return electoral.candidate(cargoId, numero, selectedTurno);
   }
-  async function snapDataset(cargoId, numero) {
-    const idx = await getSnapIndex();
-    const c = idx && idx.cargos[cargoId];
-    if (!c || !c.candidatos || !c.candidatos[numero]) return null;
-    const [snap, secoes] = await Promise.all([
-      getSnapFile(c.arquivo),
-      getSnapFile(idx.secoes || 'secoes.json')
-    ]);
-    const meta = c.candidatos[numero];
-    const munObj = {}; const sections = [];
-    for (const [sIdx, v] of snap.cand[numero]) {
-      const s = secoes.secoes[sIdx];
-      const [code, nome] = secoes.mun[s[0]];
-      const m = munObj[code] || (munObj[code] = { nome, votos: 0, secoes: 0 });
-      m.votos += v; m.secoes += 1;
-      sections.push({ muni: code, muni_nome: nome, zona: s[1], secao: s[2],
-                      votos: v, local: s[3], end: s[4] });
-    }
-    return { total: meta[1], mun: munObj, sections, nome: meta[0] };
+  let querySequence = 0;
+  /** Limpa resultado, metadados e exportação do agregado. */
+  function clearAggregateState() {
+    aggregateExport = null;
+    $('aggregateResult').hidden = true;
+    $('aggregateResult').innerHTML = '';
+    $('btnAggregateJson').hidden = true;
+  }
+  /** Invalida consultas pendentes e a exportação sem alterar a lista escolhida. */
+  function invalidatePendingQuery() {
+    querySequence++;
+    tseBusy = false;
+    tseRetryFn = null;
+    $('tseRetry').hidden = true;
+    tseHideStatus();
+    clearAggregateState();
+  }
+  /** Invalida respostas pendentes e limpa os controles da consulta anterior. */
+  function resetElectoralQuery() {
+    invalidatePendingQuery();
+    tseListFull = [];
+    $('tseSel').hidden = true;
+    $('tseSel').innerHTML = '';
+    $('tseSel').value = '';
+    $('tseFilterRow').hidden = true;
+    $('tseFilter').value = '';
+    $('tseFilterCount').textContent = '';
+    $('tseInfo').hidden = true;
+    $('tseInfo').textContent = '';
+    $('tseRetry').hidden = true;
+    tseHideStatus();
   }
   function snapInfoLine() {
     const el = $('tseInfo');
@@ -192,8 +113,7 @@
     el.hidden = false;
     el.textContent = '✔ Snapshot do TSE no servidor (gerado em ' +
       new Date(snapIndex.gerado_em).toLocaleDateString('pt-BR') +
-      '): lista e mapa por número na hora, sem download. Números fora do snapshot ' +
-      'usam o arquivo do CDN.';
+      '): resultado oficial por seção · SC · 1º turno. Carregamento apenas do candidato escolhido.';
   }
   function tseStatus(msg, pct) {
     const el = $('tseStatus');
@@ -208,7 +128,6 @@
   function tseCargoSel() {
     return TSE_CARGOS.find(c => c.id === document.querySelector('input[name="tseCargo"]:checked').value);
   }
-  function mb(n) { return (n / 1048576).toFixed(1).replace('.', ',') + ' MB'; }
 
   /**
    * Preenche a lista de candidatos (sempre em ordem de votos, decrescente)
@@ -226,9 +145,13 @@
     const items = q
       ? tseListFull.filter(x => x.numero.includes(q) || strip(x.nome).includes(q))
       : tseListFull;
-    sel.innerHTML = items.map(x =>
-      `<option value="${x.numero}">${esc(x.nome)} (${x.numero}) — ${x.votos.toLocaleString('pt-BR')} votos</option>`
+    const options = group => group.map(x =>
+      `<option value="${x.numero}">${esc(x.nome)} (${x.numero}) — ${x.votos.toLocaleString('pt-BR')} votos ${x.historico ? 'por seção · classificação jurídica não informada' : 'apurados · ' + esc(x.classificacao || 'classificação não informada')}</option>`
     ).join('');
+    const current = items.filter(x => !x.historico), historical = items.filter(x => x.semCadastro), fallback = items.filter(x => x.historico && !x.semCadastro);
+    sel.innerHTML = (current.length ? '<optgroup label="Cadastro atual EA20">' + options(current) + '</optgroup>' : '') +
+      (historical.length ? '<optgroup label="Histórico por seção — sem cadastro atual no EA20">' + options(historical) + '</optgroup>' : '') +
+      (fallback.length ? '<optgroup label="Histórico por seção — EA20 indisponível">' + options(fallback) + '</optgroup>' : '');
     sel.hidden = false;
     sel.size = Math.min(8, Math.max(1, items.length));
     if (prev && items.some(x => x.numero === prev)) sel.value = prev;
@@ -242,72 +165,84 @@
     tseBusy = true;
     tseRetryFn = tseList;
     $('tseRetry').hidden = true;
-    const cargo = tseCargoSel();
+    const cargo = tseCargoSel(), selectedTurno = turno(), query = ++querySequence;
+    clearAggregateState();
     try {
       tseStatus('Verificando snapshot do TSE…');
+      try {
+        const result = await electoral.aggregate(cargo.id, selectedTurno);
+        const idx = await getSnapIndex();
+        if (query !== querySequence) return;
+        const c = idx && selectedTurno === idx.turno && idx.cargos[cargo.id];
+        const historical = c ? (c.sem_cadastro_ea20 || []).filter(numero => !result.candidatos.some(x => x.numero === numero))
+          .map(numero => ({ numero, nome: c.candidatos[numero][0], votos: c.candidatos[numero][1], historico: true, semCadastro: true })) : [];
+        tseListFull = result.candidatos.concat(historical).sort((a, b) => b.votos - a.votos);
+        $('tseInfo').hidden = false;
+        $('tseInfo').textContent = 'Resultado oficial agregado · SC · ' + selectedTurno + 'º turno · atualizado em ' + result.atualizado + ' · ' + (result.andamento === 'f' ? 'totalização final' : 'parcial') + (historical.length ? ' · Grupo histórico por seção: ' + historical.length + ' candidaturas, snapshot gerado em ' + new Date(c.gerado_em || idx.gerado_em).toLocaleDateString('pt-BR') + '; classificação jurídica por voto não informada.' : '');
+        $('tseFilterRow').hidden = false;
+        renderTseList('');
+        tseHideStatus();
+        return;
+      } catch (e) { if (query !== querySequence) return; /* snapshot histórico disponível mesmo sem EA20 */ }
       const idx = await getSnapIndex();
+      if (query !== querySequence) return;
       snapInfoLine();
-      const c = idx && idx.cargos[cargo.id];
+      const c = idx && selectedTurno === idx.turno && idx.cargos[cargo.id];
       if (c && c.candidatos && Object.keys(c.candidatos).length) {
         tseStatus('Montando a lista de candidatos…');
         // ordem explícita por votos: chaves numéricas de objeto JS iteram em
         // ordem numérica, não de importância (invariante 5).
         tseListFull = Object.entries(c.candidatos)
-          .map(([numero, m]) => ({ numero, nome: m[0], votos: m[1] }))
+          .map(([numero, m]) => ({ numero, nome: m[0], votos: m[1], historico: true, semCadastro: (c.sem_cadastro_ea20 || []).includes(numero) }))
           .sort((a, b) => b.votos - a.votos);
         $('tseFilterRow').hidden = false;
         renderTseList('');
         tseHideStatus();
         return;
       }
-      // sem snapshot para este cargo -> download do CDN
-      tseStatus('Sem snapshot para este cargo; baixando ' + mb(cargo.sizeMB * 1048576) + ' do TSE (uma vez; fica em cache)…');
-      tseAbort = new AbortController();
-      $('tseCancel').hidden = false;
-      const csv = await getTseCsv(cargo.file, p => {
-        if (p.phase === 'download') tseStatus('Baixando ' + mb(p.got) + ' de ' + mb(p.total) + '…', p.got / p.total);
-        else if (p.phase === 'cached') tseStatus('Arquivo em cache no dispositivo.');
-        else if (p.phase === 'unzip') tseStatus('Descompactando (' + mb(cargo.sizeMB * 1048576) + ' → ~' + (cargo.id === 'PRESIDENTE' ? '1,5 GB' : '600 MB') + ')…');
-      }, tseAbort.signal);
-      tseStatus('Montando a lista de candidatos…');
-      const list = await window.TseCore.listCandidates(window.TseCore.csvChunks(csv), cargo.id);
-      tseListFull = list; // listCandidates já devolve em ordem de votos
-      $('tseFilterRow').hidden = false;
-      renderTseList('');
-      tseHideStatus();
+      throw new Error('Dados por seção indisponíveis. Consulte o resultado agregado ou tente novamente.');
     } catch (e) {
+      if (query !== querySequence) return;
       if (e && e.name === 'AbortError') { tseStatus('Download cancelado.'); return; }
       tseError(e);
     } finally {
-      tseBusy = false;
+      if (query === querySequence) tseBusy = false;
       $('tseCancel').hidden = true;
-      tseAbort = null;
+
     }
   }
   async function tseMap() {
     if (tseBusy) return;
-    const cargo = tseCargoSel();
+    const cargo = tseCargoSel(), selectedTurno = turno();
     const numero = ($('tseNum').value.trim() || ($('tseSel').value || ''));
     if (!numero) { tseStatus('Informe o número do candidato ou escolha na lista.'); return; }
     tseBusy = true;
+    const query = ++querySequence;
+    clearAggregateState();
     tseRetryFn = tseMap;
     $('tseRetry').hidden = true;
     try {
       tseStatus('Verificando snapshot do TSE…');
       const idx = await getSnapIndex();
+      if (query !== querySequence) return;
       snapInfoLine();
-      const c = idx && idx.cargos[cargo.id];
+      const c = idx && selectedTurno === idx.turno && idx.cargos[cargo.id];
       if (c && c.candidatos && c.candidatos[numero]) {
-        tseStatus('Carregando as seções do candidato ' + numero + ' (snapshot, sem download)…');
-        const ds = await snapDataset(cargo.id, numero);
+        tseStatus('Carregando as seções do candidato ' + numero + '…');
+        const ds = await snapDataset(cargo.id, numero, selectedTurno);
+        if (query !== querySequence) return;
         if (ds && ds.sections.length) {
           const nome = titleCase(ds.nome || '');
+          const atualizado = c.gerado_em || idx.gerado_em;
           const ok = await loadDataset({
             total: ds.total, mun: ds.mun, sections: ds.sections,
             candidato: nome, numero, cargo: cargo.label,
             eleicao: eleicaoLabel(idx),
-            fonte: 'TSE · snapshot de ' + new Date(idx.gerado_em).toLocaleDateString('pt-BR')
-          }, msg => { if (msg) tseStatus(msg); });
+            atualizado, turno: idx.turno, uf: idx.uf, categoria: ds.categoria, historico: ds.historico,
+            classificacao_snapshot: null, classificacao_ea20: c.classificacoes_ea20 && c.classificacoes_ea20[numero] || null,
+            fonte: 'TSE · snapshot por seção · SC · 1º turno · ' + new Date(atualizado).toLocaleDateString('pt-BR') + ((c.sem_cadastro_ea20 || []).includes(numero) ? ' · histórico por seção — sem cadastro atual no EA20' : ' · EA20 atual: ' + (c.classificacoes_ea20 && c.classificacoes_ea20[numero] || 'classificação indisponível')) + ' · snapshot sem classificação jurídica por voto'
+          }, msg => { if (msg && query === querySequence) tseStatus(msg); }, () => query === querySequence);
+          if (query !== querySequence) return;
           if (!ok) { tseStatus('Falha ao montar o mapa — a mensagem de erro está no bloco "Ou importe a sua tabela JSON", logo abaixo.'); return; }
           tseHideStatus();
           return;
@@ -319,36 +254,53 @@
           '). Use “Listar candidatos” para ver os números válidos.');
         return;
       }
-      // fallback: download direto do CDN (sem snapshot para este cargo)
-      tseStatus('Baixando ' + mb(cargo.sizeMB * 1048576) + ' do TSE (uma vez; fica em cache)…');
-      tseAbort = new AbortController();
-      $('tseCancel').hidden = false;
-      const csv = await getTseCsv(cargo.file, p => {
-        if (p.phase === 'download') tseStatus('Baixando ' + mb(p.got) + ' de ' + mb(p.total) + '…', p.got / p.total);
-        else if (p.phase === 'cached') tseStatus('Arquivo em cache no dispositivo.');
-        else if (p.phase === 'unzip') tseStatus('Descompactando…');
-      }, tseAbort.signal);
-      tseStatus('Extraindo as seções com voto do candidato ' + numero + '…');
-      const ds = await window.TseCore.candidateDataset(window.TseCore.csvChunks(csv), { cargo: cargo.id, numero });
-      if (!ds.sections.length) { tseStatus('Este candidato não tem votos em seções de SC (' + cargo.label + ').'); return; }
-      const nome = titleCase(ds.nome || '');
-      const ok = await loadDataset({
-        total: ds.total, mun: ds.mun, sections: ds.sections,
-        candidato: nome, numero, cargo: cargo.label,
-        eleicao: eleicaoLabel(null, cargo.file),
-        fonte: 'TSE · ' + cargo.file
-      }, msg => { if (msg) tseStatus(msg); });
-      if (!ok) { tseStatus('Falha ao montar o mapa — a mensagem de erro está no bloco "Ou importe a sua tabela JSON", logo abaixo.'); return; }
-      tseHideStatus();
+      tseBusy = false;
+      await showAggregate();
+      return;
     } catch (e) {
+      if (query !== querySequence) return;
       if (e && e.name === 'AbortError') { tseStatus('Download cancelado.'); return; }
       tseError(e);
     } finally {
-      tseBusy = false;
+      if (query === querySequence) tseBusy = false;
       $('tseCancel').hidden = true;
-      tseAbort = null;
+
     }
   }
+  /** Exibe a fonte agregada separadamente, sem criar seções ou coordenadas.
+   * @returns {Promise<void>} Atualiza o painel e preserva erros recuperáveis.
+   */
+  async function showAggregate() {
+    if (tseBusy) return;
+    tseBusy = true;
+    tseRetryFn = showAggregate;
+    $('tseRetry').hidden = true;
+    const query = ++querySequence;
+    clearAggregateState();
+    tseStatus('Consultando resultado oficial agregado…');
+    const cargo = tseCargoSel().id, selectedTurno = turno();
+    const municipio = $('tseMunicipio').value.trim(), zona = $('tseZona').value.trim();
+    const q = ($('tseNum').value.trim() || $('tseSel').value || $('tseFilter').value.trim()).toLocaleLowerCase('pt-BR');
+    try {
+      const result = await electoral.aggregate(cargo, selectedTurno, municipio, zona);
+      if (query !== querySequence) return;
+      const candidates = result.candidatos.filter(c => !q || c.numero === q || c.nome.toLocaleLowerCase('pt-BR').includes(q));
+      $('results').hidden = true;
+      $('fileActions').hidden = true;
+      $('aggregateResult').hidden = false;
+      $('aggregateResult').innerHTML = '<h3>Resultado oficial agregado</h3><p>' + esc(result.cargo) + ' · ' + esc(result.turno) + 'º turno · ' + esc(result.abrangencia.tipo + ' ' + result.abrangencia.codigo) +
+        ' · atualizado em ' + esc(result.atualizado) + ' · ' + (result.andamento === 'f' ? 'totalização final' : 'parcial') +
+        '</p><p>Votos por seção e locais não são fornecidos nesta resposta. As fontes podem ter datas distintas.</p>' +
+        candidates.map(c => '<p><strong>' + esc(c.nome) + ' (' + esc(c.numero) + ')</strong>: ' + c.votos.toLocaleString('pt-BR') + ' votos · ' + esc(c.classificacao) + ' · ' + esc(c.situacao) + '</p>').join('') +
+        (candidates.length ? '' : '<p>Candidato não encontrado nesta abrangência.</p>') +
+        '<p>Votos de legenda: ' + esc(result.votos.vl === undefined ? 'não se aplica' : result.votos.vl) + '</p>';
+      aggregateExport = result;
+      $('btnAggregateJson').hidden = false;
+      tseHideStatus();
+    } catch (e) { if (query === querySequence) { clearAggregateState(); tseError(e); } }
+    finally { if (query === querySequence) tseBusy = false; }
+  }
+  let aggregateExport = null;
   function tseError(e) {
     const r = describeTseError(e);
     tseStatus(r.msg); // textContent limpo (remove detalhe anterior, se houver)
@@ -365,12 +317,12 @@
     if (e && e.name === 'AbortError') return { msg: 'download cancelado.' };
     const m = (e && e.message) || String(e);
     if (/failed to fetch|networkerror|load failed|network request failed/i.test(m)) {
-      return { msg: 'Falha de rede ao acessar cdn.tse.jus.br. Verifique sua conexão: adblocker, ' +
-        'proxy corporativo ou VPN costumam causar isso. Tente novamente — ou use a lista ' +
-        'de candidatos do snapshot, que não precisa de download.' };
+      return { msg: 'Falha de rede ao consultar a fonte eleitoral. Verifique sua conexão: adblocker, ' +
+        'proxy corporativo, VPN ou bloqueio CORS podem causar isso. Tente novamente ou consulte o resultado estadual publicado no site.' };
     }
-    if (/HTTP 404/.test(m)) return { msg: 'arquivo ainda não está disponível no CDN do TSE.', detail: m };
-    if (/HTTP 403/.test(m)) return { msg: 'acesso negado pelo CDN do TSE; tente novamente mais tarde.', detail: m };
+    if (/indisponíve|inválid|incompatível/.test(m)) return { msg: m };
+    if (/HTTP 404/.test(m)) return { msg: 'Resultado indisponível nesta fonte. Tente novamente ou consulte outra abrangência.', detail: m };
+    if (/HTTP 403/.test(m)) return { msg: 'Acesso negado pela fonte eleitoral. Tente novamente mais tarde.', detail: m };
     return { msg: 'falha inesperada ao consultar o TSE.', detail: m };
   }
   function eleicaoLabel(idx, cargoFile) {
@@ -1185,21 +1137,26 @@
    * @param {(msg: string) => void} [onStage] callback de estado de carga
    *   (msg '' = limpar). O chamador decide a superfície (status do painel
    *   TSE ou linha do dropzone); sem percentual — só há progresso
-   *   mensurável no download do CDN (já coberto por tseStatus).
+   *   visível nas consultas de dados (já cobertas por tseStatus).
+   * @param {() => boolean} [isCurrent] Verifica se a consulta continua atual após esperas.
    * @returns {Promise<boolean>} true se o mapa foi desenhado.
    */
-  async function loadDataset(obj, onStage) {
+  async function loadDataset(obj, onStage, isCurrent = () => true) {
+    clearAggregateState();
     const stage = msg => { if (onStage) onStage(msg); };
     $('errBox').hidden = true;
     if (!geo) stage('Carregando a malha municipal de SC…');
     try { await ensureGeo(); }
     catch (e) {
+      if (!isCurrent()) return false;
       stage('');
       showError('Falha ao carregar a malha municipal de SC (data/geo_sc_municipios.json) — tente novamente.');
       return false;
     }
+    if (!isCurrent()) return false;
     if (geoCat == null && !geoCatPromise) stage('Carregando o catálogo de coordenadas verificadas…');
     await loadGeoCatalog(); // null = catálogo indisponível (modo ilustrativo)
+    if (!isCurrent()) return false;
     stage('');
     showIllus = false;
     updateIllusBtn();
@@ -1295,20 +1252,21 @@
       $('tsePanel').scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
     });
     document.querySelectorAll('input[name="tseCargo"]').forEach(r =>
-      r.addEventListener('change', () => {
-        const sel = $('tseSel');
-        sel.hidden = true;
-        sel.innerHTML = ''; // reseta opções/valor do cargo anterior
-        $('tseNum').value = '';
-        $('tseFilterRow').hidden = true;
-        $('tseFilter').value = '';
-        $('tseFilterCount').textContent = '';
-        tseListFull = [];
-        $('tseSize').textContent = tseCargoSel().sizeMB.toLocaleString('pt-BR') + ' MB';
-        $('tseBig').hidden = tseCargoSel().id !== 'PRESIDENTE';
-      }));
+      r.addEventListener('change', () => { resetElectoralQuery(); $('tseNum').value = ''; }));
     $('btnTseList').addEventListener('click', tseList);
-    $('tseFilter').addEventListener('input', () => renderTseList($('tseFilter').value));
+    $('btnAggregate').addEventListener('click', showAggregate);
+    snapshots.file('municipios.json').then(table => {
+      $('tseMunicipio').innerHTML = '<option value="">Santa Catarina (estado inteiro)</option>' +
+        table.municipios.slice().sort((a, b) => a[1].localeCompare(b[1], 'pt-BR')).map(([code, nome]) => '<option value="' + esc(code) + '">' + esc(titleCase(nome)) + '</option>').join('');
+    }).catch(() => { /* resultado estadual permanece disponível sem catálogo territorial */ });
+    $('tseMunicipio').addEventListener('change', () => { $('tseZona').value = ''; resetElectoralQuery(); });
+    $('tseZona').addEventListener('input', resetElectoralQuery);
+    $('tseZona').addEventListener('change', resetElectoralQuery);
+    $('btnAggregateJson').addEventListener('click', () => { if (aggregateExport) download('resultado-agregado.json', JSON.stringify(aggregateExport, null, 2), 'application/json'); });
+    $('tseTurno').addEventListener('change', () => { resetElectoralQuery(); $('tseNum').value = ''; });
+    $('tseSel').addEventListener('change', () => { $('tseNum').value = $('tseSel').value; invalidatePendingQuery(); });
+    $('tseNum').addEventListener('input', () => { $('tseSel').value = ''; invalidatePendingQuery(); });
+    $('tseFilter').addEventListener('input', () => { invalidatePendingQuery(); renderTseList($('tseFilter').value); });
     $('btnPick').addEventListener('click', () => $('fileInput').click());
     // pan/pinch: um único par de listeners na window, delegados ao mapa atual
     window.addEventListener('pointermove', ev => { if (mapGesture) mapGesture.onMove(ev); });
@@ -1361,7 +1319,7 @@
       tseListFull = [];
       window.scrollTo({ top: 0, behavior: scrollBehavior() });
     });
-    $('tseCancel').addEventListener('click', () => { if (tseAbort) tseAbort.abort(); });
+
     $('btnIllus').addEventListener('click', () => {
       showIllus = !showIllus;
       if (model) {

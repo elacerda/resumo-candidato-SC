@@ -1,0 +1,47 @@
+{
+  "presidente": {
+    "url": "https://resultados.tse.jus.br/oficial/ele2026/6257/dados/sc/sc-c0001-e006257-u.json",
+    "sha256": "b51645c4cf68c1fe4761acdafd1214325c259661eb6522b286b97ab1b1d13381",
+    "obtido_em": "2026-11-16T20:13:02.638391+00:00"
+  },
+  "governador": {
+    "url": "https://resultados.tse.jus.br/oficial/ele2026/6259/dados/sc/sc-c0003-e006259-u.json",
+    "sha256": "f914faea0570ef821a43df92d49a2e80e326a9257107803db7797e6698ff6d96",
+    "obtido_em": "2026-11-16T20:13:02.382032+00:00"
+  },
+  "senador": {
+    "url": "https://resultados.tse.jus.br/oficial/ele2026/6259/dados/sc/sc-c0005-e006259-u.json",
+    "sha256": "233f2d97731e86f3d7b54a7c9298eb15bd8781e776e85cd0e4886316a8dddb2f",
+    "obtido_em": "2026-11-16T20:13:02.533616+00:00"
+  },
+  "dep_federal": {
+    "url": "https://resultados.tse.jus.br/oficial/ele2026/6259/dados/sc/sc-c0006-e006259-u.json",
+    "sha256": "9f5f496affaaf7bf88983a51fa65d1feed0c1918d0272bb21794b74691bc39ec",
+    "obtido_em": "2026-11-16T20:12:37.424873+00:00"
+  },
+  "dep_estadual": {
+    "url": "https://resultados.tse.jus.br/oficial/ele2026/6259/dados/sc/sc-c0007-e006259-u.json",
+    "sha256": "2c2da1e595a8cfedc11898755a6701808181f5e6ea6a943beae474f3db1d7adc",
+    "obtido_em": "2026-11-16T20:13:02.275240+00:00"
+  },
+  "presidente-2": {
+    "url": "https://resultados.tse.jus.br/oficial/ele2026/6258/dados/sc/sc-c0001-e006258-u.json",
+    "sha256": "80135261f80b3b388cb8bd61335a7347163f9385598bb071a7d0841d6fbd8b3d",
+    "obtido_em": "2026-11-16T20:15:17.440114+00:00"
+  },
+  "ele-c": {
+    "url": "https://resultados.tse.jus.br/oficial/comum/config/ele-c.json",
+    "sha256": "91d1c4fe50dbe92067b83677d77a4f1856f5deca69a04b013a679ff690791721",
+    "obtido_em": "2026-11-16T20:11:56.814284+00:00"
+  },
+  "municipio": {
+    "url": "https://resultados.tse.jus.br/oficial/ele2026/6259/dados/sc/sc81051-c0006-e006259-u.json",
+    "sha256": "68b5cb9d452b11c111c436a8637390b1975656b5cf61e10f508bf4e138d3d181",
+    "obtido_em": "2026-11-16T20:12:37.743878+00:00"
+  },
+  "zona": {
+    "url": "https://resultados.tse.jus.br/oficial/ele2026/6259/dados/sc/sc81051-z0012-c0006-e006259-u.json",
+    "sha256": "cdfff41b952d2e235dea353dce36dddc28b42174ace802db3e26e4d425cbf7b8",
+    "obtido_em": "2026-11-16T20:12:38.328887+00:00"
+  }
+}

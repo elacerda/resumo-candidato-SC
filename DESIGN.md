@@ -301,3 +301,13 @@ marcadores ilustrativos — o tracejado é o padrão visual de "não é dado fin
 - **Don't** adicionar sombra a superfícies (tooltip é a exceção única).
 - **Don't** misturar marcador verificado e ilustrativo sem o rótulo de modo ativo.
 - **Don't** introduzir light mode, bundler ou dependência npm.
+
+## Consulta de resultados agregados
+
+A identidade vermelha e o mapa existente são preservados. O seletor de turno e a ação
+“Resultado agregado” usam os controles atuais. A lista prioriza o cadastro nominal EA20;
+na ausência dele, informa a data do snapshot histórico. Municípios são escolhidos por
+nome; a zona é opcional. O painel agregado identifica cargo, turno, abrangência,
+atualização e estado de totalização, preserva classificação/situação e separa legenda.
+Ele não cria seções ou marcadores. A exportação desse painel é um JSON separado.
+Resultado por seção mantém as exportações SVG/JSON e a semântica geográfica descrita acima.

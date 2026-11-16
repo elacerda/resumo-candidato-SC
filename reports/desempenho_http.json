@@ -1,0 +1,25 @@
+{
+  "metodo": "Corpos realmente transferidos via HTTP local sem compressão; exclui cabeçalhos, geografia e recursos comuns. Não mede GitHub Pages.",
+  "corpos_bytes": {
+    "data/tse_2026/candidatos/dep_estadual/22222.json": 174704,
+    "data/tse_2026/candidatos/dep_estadual/36123.json": 193,
+    "data/tse_2026/candidatos/dep_federal/1333.json": 32115,
+    "data/tse_2026/candidatos/dep_federal/2233.json": 177910,
+    "data/tse_2026/candidatos/dep_federal/2557.json": 267,
+    "data/tse_2026/candidatos/governador/22.json": 195373,
+    "data/tse_2026/candidatos/governador/29.json": 20200,
+    "data/tse_2026/candidatos/presidente/22.json": 195986,
+    "data/tse_2026/candidatos/presidente/28.json": 1857,
+    "data/tse_2026/candidatos/senador/161.json": 28501,
+    "data/tse_2026/candidatos/senador/221.json": 195521,
+    "data/tse_2026/dep_estadual.json": 8063146,
+    "data/tse_2026/dep_federal.json": 7079788,
+    "data/tse_2026/governador.json": 905114,
+    "data/tse_2026/index.json": 134103,
+    "data/tse_2026/municipios.json": 9371,
+    "data/tse_2026/presidente.json": 1033703,
+    "data/tse_2026/secoes.json": 1614140,
+    "data/tse_2026/senador.json": 1612992,
+    "indice-anterior.json": 34384
+  }
+}

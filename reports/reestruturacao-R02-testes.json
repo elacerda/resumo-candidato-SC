@@ -1,0 +1,382 @@
+{
+  "host": "tufao",
+  "data": "2026-11-16",
+  "execucao": "sequencial, um teste pesado/Chrome por vez",
+  "memoria": "RSS máximo por comando reportado por /usr/bin/time; não representa RAM total ou soma dos processos Chrome",
+  "auditoria_sha256": "aec500c4294bcef514f2d5456c49b592ae433a3f97b520eafcb3a101719db2ac",
+  "testes": [
+    {
+      "command": [
+        "python3",
+        "test/snapshot_format_check.py"
+      ],
+      "exit_code": 0,
+      "seconds": 7.17,
+      "log": "/tmp/resumo-R02/snapshot_format_check.log",
+      "max_rss_kib": 257976
+    },
+    {
+      "command": [
+        "python3",
+        "test/source_compare_check.py"
+      ],
+      "exit_code": 0,
+      "seconds": 11.64,
+      "log": "/tmp/resumo-R02/source_compare_check.log",
+      "max_rss_kib": 257740
+    },
+    {
+      "command": [
+        "python3",
+        "test/geo_pbf_roundtrip.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.06,
+      "log": "/tmp/resumo-R02/geo_pbf_roundtrip.log",
+      "max_rss_kib": 13048
+    },
+    {
+      "command": [
+        "python3",
+        "test/geo_ref_check.py"
+      ],
+      "exit_code": 1,
+      "seconds": 147.12,
+      "log": "/tmp/resumo-R02/geo_ref_check.log",
+      "max_rss_kib": 519552
+    },
+    {
+      "command": [
+        "python3",
+        "test/geo_rebuild_diagnostic.py",
+        "--rebuild-dir",
+        "/tmp/resumo-R02/geo-rebuild",
+        "--report",
+        "reports/geo_rebuild_R02.json"
+      ],
+      "exit_code": 0,
+      "seconds": 0.24,
+      "log": "/tmp/resumo-R02/geo_rebuild_diagnostic.log",
+      "max_rss_kib": 54832
+    },
+    {
+      "command": [
+        "python3",
+        "sync/measure_payloads.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.54,
+      "log": "/tmp/resumo-R02/measure_payloads.log",
+      "max_rss_kib": 249260
+    },
+    {
+      "command": [
+        "python3",
+        "test/payload_http.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.63,
+      "log": "/tmp/resumo-R02/payload_http.log",
+      "max_rss_kib": 39628
+    },
+    {
+      "command": [
+        "python3",
+        "test/ea20_network.py"
+      ],
+      "exit_code": 0,
+      "seconds": 0.34,
+      "log": "/tmp/resumo-R02/ea20_network.log",
+      "max_rss_kib": 22368
+    },
+    {
+      "command": [
+        "node",
+        "test/labels_browser.js"
+      ],
+      "exit_code": 0,
+      "seconds": 9.71,
+      "log": "/tmp/resumo-R02/labels_browser.log",
+      "max_rss_kib": 82936
+    },
+    {
+      "command": [
+        "python3",
+        "sync/tse_sync.py",
+        "--out",
+        "/tmp/resumo-R02/snapshot-rebuild",
+        "--zip-sc",
+        "/tmp/tse_sc.zip",
+        "--zip-br",
+        "/tmp/tse_br.zip",
+        "--review-only"
+      ],
+      "exit_code": 0,
+      "seconds": 31.54,
+      "log": "/tmp/resumo-R02/tse_sync.log",
+      "max_rss_kib": 489692
+    },
+    {
+      "command": [
+        "node",
+        "test/app_smoke.js"
+      ],
+      "exit_code": 0,
+      "seconds": 0.19,
+      "log": "/tmp/resumo-R02/app_smoke.log",
+      "final": true,
+      "max_rss_kib": 117236
+    },
+    {
+      "command": [
+        "node",
+        "test/snapshot_app.js"
+      ],
+      "exit_code": 0,
+      "seconds": 0.46,
+      "log": "/tmp/resumo-R02/snapshot_app.log",
+      "final": true,
+      "max_rss_kib": 142860
+    },
+    {
+      "command": [
+        "node",
+        "test/tse_panel_ux.js"
+      ],
+      "exit_code": 0,
+      "seconds": 0.63,
+      "log": "/tmp/resumo-R02/tse_panel_ux.log",
+      "final": true,
+      "max_rss_kib": 153812
+    },
+    {
+      "command": [
+        "node",
+        "test/geo_semantics.js"
+      ],
+      "exit_code": 0,
+      "seconds": 1.25,
+      "log": "/tmp/resumo-R02/geo_semantics.log",
+      "final": true,
+      "max_rss_kib": 231924
+    },
+    {
+      "command": [
+        "node",
+        "test/geo_verify.js"
+      ],
+      "exit_code": 0,
+      "seconds": 1.47,
+      "log": "/tmp/resumo-R02/geo_verify.log",
+      "final": true,
+      "max_rss_kib": 474744
+    },
+    {
+      "command": [
+        "node",
+        "test/tse_e2e.js"
+      ],
+      "exit_code": 0,
+      "seconds": 8.77,
+      "log": "/tmp/resumo-R02/tse_e2e.log",
+      "final": true,
+      "max_rss_kib": 1906520
+    },
+    {
+      "command": [
+        "node",
+        "test/electoral_data.js"
+      ],
+      "exit_code": 0,
+      "seconds": 1.17,
+      "log": "/tmp/resumo-R02/electoral_data.log",
+      "final": true,
+      "max_rss_kib": 262384
+    },
+    {
+      "command": [
+        "node",
+        "test/ui_browser.js",
+        "--shot"
+      ],
+      "exit_code": 0,
+      "seconds": 12.96,
+      "log": "/tmp/resumo-R02/ui_browser.log",
+      "final": true,
+      "max_rss_kib": 145176
+    }
+  ],
+  "verificacoes_estaticas": [
+    {
+      "arquivo": "js/app.js",
+      "tipo": "node --check",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "js/core.js",
+      "tipo": "node --check",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "js/ea20.js",
+      "tipo": "node --check",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "js/electoral.js",
+      "tipo": "node --check",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "js/fflate.js",
+      "tipo": "node --check",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "js/snapshots.js",
+      "tipo": "node --check",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "js/source-compare.js",
+      "tipo": "node --check",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "js/tse.js",
+      "tipo": "node --check",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "test/app_smoke.js",
+      "tipo": "node --check",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "test/electoral_data.js",
+      "tipo": "node --check",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "test/geo_semantics.js",
+      "tipo": "node --check",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "test/geo_verify.js",
+      "tipo": "node --check",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "test/labels_browser.js",
+      "tipo": "node --check",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "test/snapshot_app.js",
+      "tipo": "node --check",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "test/tse_e2e.js",
+      "tipo": "node --check",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "test/tse_panel_ux.js",
+      "tipo": "node --check",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "test/ui_browser.js",
+      "tipo": "node --check",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "sync/ea20_sync.py",
+      "tipo": "compile sem escrita de bytecode",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "sync/geo_pbf.py",
+      "tipo": "compile sem escrita de bytecode",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "sync/geo_ref.py",
+      "tipo": "compile sem escrita de bytecode",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "sync/measure_payloads.py",
+      "tipo": "compile sem escrita de bytecode",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "sync/snapshot_format.py",
+      "tipo": "compile sem escrita de bytecode",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "sync/source_compare.py",
+      "tipo": "compile sem escrita de bytecode",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "sync/tse_sync.py",
+      "tipo": "compile sem escrita de bytecode",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "test/ea20_network.py",
+      "tipo": "compile sem escrita de bytecode",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "test/geo_pbf_roundtrip.py",
+      "tipo": "compile sem escrita de bytecode",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "test/geo_rebuild_diagnostic.py",
+      "tipo": "compile sem escrita de bytecode",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "test/geo_ref_check.py",
+      "tipo": "compile sem escrita de bytecode",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "test/payload_http.py",
+      "tipo": "compile sem escrita de bytecode",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "test/snapshot_format_check.py",
+      "tipo": "compile sem escrita de bytecode",
+      "exit_code": 0
+    },
+    {
+      "arquivo": "test/source_compare_check.py",
+      "tipo": "compile sem escrita de bytecode",
+      "exit_code": 0
+    },
+    {
+      "tipo": "git diff --check",
+      "exit_code": 0,
+      "saida": ""
+    }
+  ],
+  "protegidos_sem_alteracao": 74,
+  "snapshot_rebuild": {
+    "arquivos": 677,
+    "diferentes": []
+  },
+  "gate_promocao": {
+    "exit_code": 2,
+    "estado": "revisao_obrigatoria",
+    "saida": "Promoção bloqueada: divergência comprovada ou revisão obrigatória pendente"
+  },
+  "falha_preexistente": "geo_ref_check.py: rebuild == publicado; demais verificações aprovadas; diagnóstico em reports/geo_rebuild_R02.json"
+}

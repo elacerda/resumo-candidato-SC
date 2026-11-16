@@ -6,13 +6,15 @@ mapa é desenhado **100% no navegador** — nenhum dado sai da máquina.
 
 ## Uso
 
-- **Dados do TSE (2026)**: para os cargos **Deputado Federal, Deputado Estadual,
-  Governador, Senador** (arquivo estadual do TSE) e **Presidente** (arquivo nacional,
-  filtrado para SC). Primeiro o app consulta o **snapshot** (`data/tse_2026/`), pré-computado
-  neste repositório pelo GitHub Actions a partir dos arquivos oficiais: lista e mapa por
-  número carregam na hora, **sem download**. Sem snapshot (ou para número fora dele), o app
-  baixa o arquivo direto do CDN do TSE (`cdn.tse.jus.br`, CORS aberto) — uma única vez, com
-  progresso, e fica em cache (IndexedDB) no dispositivo. Nada é enviado a nenhum servidor.
+- **Dados do TSE (2026)**: escolha cargo e turno, liste e filtre por nome ou número.
+  A lista vem dos resultados oficiais EA20 publicados em `data/ea20/`; se essa fonte
+  estiver indisponível, a lista histórica do snapshot de seções continua disponível.
+  **Resultado agregado** mostra votos, classificação, situação, abrangência e atualização
+  da fonte. Escolha um município e, opcionalmente, uma zona para consultar o TSE sob demanda.
+  **Mostrar mapa** carrega somente o JSON do candidato e a tabela compartilhada de seções.
+  Sem seções para o turno, apresenta o agregado disponível, sem fabricar marcadores.
+  Nenhuma falha dispara download de ZIP. Os dados consultados ficam em memória durante
+  a página; atualize a página para consultar uma nova versão publicada.
 - **Carregar JSON** (ou arrastar o arquivo para a página): tabela no formato abaixo.
 - **Exemplo (1333)**: carrega o dataset de exemplo (Ju Andózio, 1333, SC, 2026).
 - **Baixar SVG / JSON**: exporta o mapa estático (com tooltips nativos) ou o dataset.
@@ -52,7 +54,7 @@ Interação do mapa: scroll = zoom (centrado no cursor) · arrastar = mover · d
   mesmo ponto. Com o catálogo `data/geo_loc`, os marcadores usam as coordenadas
   verificadas dos locais de votação (ver "Semântica geográfica do mapa").
 - `js/tse.js` — parser em stream do CSV oficial do TSE (`votacao_secao_<ANO>_<UF|BR>.csv`,
-  latin-1, `;`): lista de candidatos por cargo e dataset por candidato (fallback do CDN).
+  latin-1, `;`), mantido apenas para diagnóstico offline no Node; não é carregado pelo site.
 - `sync/geo_ref.py` — pipeline offline de georreferenciamento dos **locais de votação**
   (estado inteiro, 295 municípios): associa cada seção do snapshot 2026 ao seu local de
   votação por identificador oficial do TSE, obtém a coordenada WGS84 oficial
@@ -60,17 +62,23 @@ Interação do mapa: scroll = zoom (centrado no cursor) · arrastar = mover · d
   lacunas por OSM (instalações) e cruza com INEP (validação institucional) e TRE-SC
   (zona/endereço). Determinístico; publica `data/geo_loc/` + relatório em `reports/`.
 - `sync/geo_pbf.py` — leitor de OSM PBF (protobuf) em stdlib, usado pelo pipeline.
-- `sync/tse_sync.py` — gera o snapshot (`data/tse_2026/`): baixa os zips oficiais do TSE,
-  filtra SC/1º turno e escreve `index.json` (candidatos por cargo com totais), `secoes.json`
-  (tabela única de seções + municípios) e um arquivo por cargo com os votos por seção.
-  Determinístico (timestamp = `DT_GERACAO` do arquivo TSE).
-- `.github/workflows/tse-sync.yml` — re-gera o snapshot diariamente (e sob demanda) e
-  commita somente quando o TSE atualizar os dados.
-- `js/app.js` — modo TSE (download com progresso + cache IndexedDB + unzip via `fflate`),
-  upload/drag&drop, validação, render SVG, HUD, tooltip, zoom/pan e exportações.
-- `js/fflate.js` — [fflate](https://github.com/101arrowz/fflate) (MIT), descompactação zip no navegador.
-- `data/geo_sc_municipios.json` — malha municipal de SC (IBGE, espelho tbrugz/geodata-br).
-- `data/1333_sc_2026.json` — dataset de exemplo (extração TSE).
+- `js/ea20.js` — cliente e normalização de EA11/EA20, com validação de identidade,
+  contadores e separação entre candidatos e partidos. Classificações jurídicas originais preservadas.
+- `js/snapshots.js` — carregamento de um candidato, cache e verificação das somas/referências.
+- `js/electoral.js` — serviço que mantém as fontes agregada e granular independentes.
+- `js/source-compare.js` — comparação estrita de contextos eleitorais antes de comparar totais.
+- `sync/ea20_sync.py` — captura oficial, valida identidade e publica espelhos estaduais pequenos.
+- `sync/tse_sync.py` — processamento dos ZIPs exclusivamente offline/CI; valida ano,
+  eleição, identidade dos votáveis e locais. Downloads com ETag/Last-Modified e hash do cache.
+- `sync/snapshot_format.py` — publicação determinística de 667 arquivos individuais,
+  partidos separados e metadados de origem; conserva arquivos legados para testes/diagnóstico.
+- `.github/workflows/tse-sync.yml` — consulta, gera e valida; disponibiliza artefato
+  para revisão, com `contents: read`. Não executa commit ou push.
+- `js/app.js` — interface e mapa; upload JSON e exportações SVG/JSON preservados.
+- `js/fflate.js` — [fflate](https://github.com/101arrowz/fflate) (MIT), usado somente
+  no teste offline do ZIP oficial. Não integra o carregamento da página.
+
+Detalhes do contrato, formato, decisões, limites e reprodução: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Semântica geográfica do mapa
 
@@ -143,32 +151,63 @@ commitada; `data/geo_loc/` (~1,8 MB) sim.
 
 ## Fonte dos dados do TSE
 
+A [configuração oficial EA11](https://resultados.tse.jus.br/oficial/comum/config/ele-c.json)
+fornece eleições, cargos, turnos e abrangências. O [portal técnico oficial](https://www.tse.jus.br/eleicoes/informacoes-tecnicas-sobre-a-divulgacao-de-resultados)
+documenta a nomenclatura dos EA20 estaduais, municipais e por zona.
+Capturas reais e suas URLs/hashes/datas estão em `test/fixtures/ea20/`.
 
+Os ZIPs oficiais `votacao_secao_2026_SC.zip` e `votacao_secao_2026_BR.zip`, do
+[CDN de dados abertos](https://cdn.tse.jus.br/estatistica/sead/odsele/votacao_secao/),
+são processados por `sync/tse_sync.py`. Não são baixados pelo navegador.
+Brancos/nulos (`0,1,95,96,99` e nomes correspondentes) são excluídos. Legenda é
+identificada por `SQ_CANDIDATO` e confirmada no cadastro partidário oficial, sem
+heurística de comprimento do número. O snapshot mantém os votos nominais históricos,
+inclusive quando uma candidatura não está no cadastro EA20 atual, com aviso explícito.
 
-`https://cdn.tse.jus.br/estatistica/sead/odsele/votacao_secao/votacao_secao_2026_<UF|BR>.zip`
-(CSV latin-1, separador `;`; colunas: UF, município, zona, seção, cargo, votável,
-QT_VOTOS, local de votação e endereço). O servidor responde
-`Access-Control-Allow-Origin: *`, por isso a consulta é feita direto do navegador,
-sem backend. Branco/nulo (números 0/1/95/96/99 e "VOTO BRANCO/NULO") são excluídos
-das listas de candidatos.
-
-O TSE não expõe API de consulta por candidato na granularidade de seção — o zip por
-seção é a única fonte oficial. Por isso o snapshot: o sync baixa e compacta os dados
-no servidor de CI e commita em `data/tse_2026/` (~20 MB para os 5 cargos de SC),
-permitindo consulta instantânea por número no próprio GitHub Pages.
+A UI informa a atualização da fonte usada. Totais EA20 e totais por seção não são
+somados nem substituídos entre si; o CSV não informa o instante e estado de totalização
+que permitiria afirmar equivalência temporal. Veja `reports/eleitoral_comparacao.json`.
 
 ## Testes
 
 ```
 node test/app_smoke.js    # smoke do app com DOM shim (exemplo 1333)
-node test/snapshot_app.js # app no modo snapshot: mapa/lista por número + fallback CDN com falha de rede
+node test/snapshot_app.js # app no modo snapshot: mapa individual, lista nominal e indisponibilidade sem ZIP
 node test/geo_semantics.js# correção geográfica: join TSE→IBGE, referências de cidades, identidade/
                           # contenção/estabilidade dos pontos, agregados e semântica honesta na UI
 node test/geo_verify.js   # catálogo georreferenciado: integridade, PIP independente,
                           # re-derivação do registro-fonte TSE/OSM, independência de
                           # candidato/cargo, frente (marcadores=locais, modos separados)
 node test/tse_e2e.js      # zip oficial TSE -> parser JS vs dataset 1333 publicado (requer /tmp/tse_sc.zip)
+node test/electoral_data.js # capturas EA20, turnos, categorias, fontes, CORS simulado, 667 snapshots
+python3 test/snapshot_format_check.py # determinismo, origem das fixtures e cache HTTP simulado
+node test/tse_panel_ux.js
+node test/ui_browser.js --shot # servidor HTTP estático e Chrome, desktop/mobile, exportações e EA20
+node test/labels_browser.js
 python3 test/geo_pbf_roundtrip.py  # leitor PBF: roundtrip contra o proto oficial
 python3 test/geo_ref_check.py      # catálogo publicado: schema, cobertura 295, contenção,
                                    # re-derivação TSE + spot-checks geográficos, rebuild determinístico
 ```
+
+Teste de rede real, separado da suíte local: `python3 test/ea20_network.py`.
+Para regenerar: execute primeiro `python3 sync/ea20_sync.py`, depois
+`python3 sync/tse_sync.py`. Para reproduzir capturas sem rede:
+`python3 sync/ea20_sync.py --fixtures test/fixtures/ea20 --out /tmp/ea20`.
+
+A falha preexistente `geo_ref_check.py: rebuild == publicado` está registrada no
+[relatório de implementação](reports/reestruturacao.md); o catálogo publicado foi preservado.
+
+### Correções R02 e revisão dos dados
+
+A listagem inclui os 12 históricos em grupo separado e informa a classificação dos
+votos EA20 nas opções. Trocar cargo, turno ou território invalida consultas pendentes
+e limpa exportações anteriores. Selecionar outro candidato atualiza o número consultado.
+
+A geração padrão bloqueia promoção sem comprovação de equivalência entre versões.
+Use `python3 sync/snapshot_format.py --review-only` apenas para gerar o diagnóstico;
+`python3 sync/source_compare.py` retorna código 2 enquanto faltar revisão humana.
+O fluxo de aprovação vinculada ao hash, os artefatos de revisão/promoção e os limites
+da atualização diária estão em [ARCHITECTURE.md](ARCHITECTURE.md#r02-decisão-efetiva-de-promoção).
+Regressões adicionais: `python3 test/source_compare_check.py` e
+`python3 test/geo_rebuild_diagnostic.py` (somente diretório temporário; não altera catálogo).
+A investigação geográfica detalhada está em [reports/reestruturacao-R02.md](reports/reestruturacao-R02.md).

@@ -48,6 +48,9 @@ require('../js/core.js'); // registra global.ResumoCore? não — core usa modul
 // core.js exporta via module.exports quando module existe; app.js espera window.ResumoCore
 win.ResumoCore = require('../js/core.js');
 
+window.Snapshots = require('../js/snapshots.js');
+window.Ea20 = require('../js/ea20.js');
+window.Electoral = require('../js/electoral.js');
 require('../js/app.js');
 const init = doc.listeners['DOMContentLoaded'];
 if (!init) { console.error('FAIL: DOMContentLoaded não registrado'); process.exit(1); }

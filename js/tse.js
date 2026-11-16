@@ -87,8 +87,8 @@
   }
 
   function isBlankOrNull(num, nome) {
-    if (num === '0' || num === '1' || num === '95' || num === '99') return true;
-    return /VOTO\s+(BRANCO|NULO)/.test(nome);
+    if (num === '0' || num === '1' || num === '95' || num === '96' || num === '99') return true;
+    return /VOTO\s+(BRANCO|NULO)/i.test(nome);
   }
 
   // lista de candidatos do cargo: [{numero, nome, votos}] (ordem: votos desc)

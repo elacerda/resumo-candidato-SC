@@ -1,0 +1,31 @@
+{
+  "host": "tufao",
+  "arquivos": {
+    "index.json": {
+      "publicado_sha256": "332e32cad8eb53493a388dc903304eb6271ac7911e8087d861f89f48a7d2df21",
+      "rebuild_sha256": "cdc7d372d7bc206e6a2731c0abe1986e86b2ea77295a6022b3764db37b8090ac"
+    },
+    "locais.json": {
+      "publicado_sha256": "1fa68dcc56102534d053f3de415d14e71940ac01e390b91243283388999378c0",
+      "rebuild_sha256": "868737c952a0b080d0cff46078e65163a156dd21f53411f0c8115544033adff1"
+    },
+    "secoes.json": {
+      "publicado_sha256": "160c2a41311f6ba1848d4f58b51025c11900af060fa9c669244ac4b68703ce9b",
+      "rebuild_sha256": "160c2a41311f6ba1848d4f58b51025c11900af060fa9c669244ac4b68703ce9b"
+    },
+    "pendentes.json": {
+      "publicado_sha256": "c3b1a9df559b548454daee9f0e343badd9f1b1d7505f3898c62387ce7956998c",
+      "rebuild_sha256": "c2c59ce1289be1dbfdf70e46c9d4fd3a0b8233dfaf4a3aa52d9e6926a429267f"
+    }
+  },
+  "geracao_snapshot": {
+    "publicado": "2026-10-06T14:03:43",
+    "rebuild": "2026-10-26T12:07:25"
+  },
+  "locais_com_secoes_reordenadas": 2036,
+  "pendentes_com_secoes_reordenadas": 1,
+  "coordenadas_alteradas": 0,
+  "associacoes_alteradas": 0,
+  "demais_atributos_alterados": 0,
+  "causa": "Catálogo publicado usa geração anterior do snapshot e ordem anterior das seções; build_catalog preserva a ordem de snap_rows e publish a serializa. _gerado_em incorpora a geração do snapshot."
+}

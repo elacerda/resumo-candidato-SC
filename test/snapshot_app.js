@@ -63,6 +63,9 @@ global.URL.revokeObjectURL = () => {};
 
 win.ResumoCore = require('../js/core.js');
 win.TseCore = require('../js/tse.js');
+window.Snapshots = require('../js/snapshots.js');
+window.Ea20 = require('../js/ea20.js');
+window.Electoral = require('../js/electoral.js');
 require('../js/app.js');
 const init = doc.listeners['DOMContentLoaded'];
 if (!init) { console.error('FAIL: DOMContentLoaded não registrado'); process.exit(1); }
@@ -101,15 +104,15 @@ function check(name, pass, extra) {
   await els.btnTseMap.listeners.click[0]();
   await new Promise(r => setTimeout(r, 50));
   const errText = els.tseStatusText.textContent;
-  check('erro de rede amigável', /Falha de rede/.test(errText), errText.slice(0, 60));
-  check('menção a adblocker/proxy', /adblocker|proxy/.test(errText), '');
+  check('erro de rede amigável', /Resultados agregados indisponíveis/.test(errText), errText.slice(0, 60));
+  check('orienta consulta agregada', /agregados indisponíveis/.test(errText), '');
   check('botão "Tentar novamente" visível', els.tseRetry.hidden === false, '');
   check('status em modo erro', els.tseStatus.classList.contains('error'), '');
 
   // 3) retry reexecuta a ação
   await els.tseRetry.listeners.click[0]();
   await new Promise(r => setTimeout(r, 50));
-  check('retry reexecuta (erro reaparece)', !els.tseStatus.hidden && /Falha de rede/.test(els.tseStatusText.textContent), '');
+  check('retry reexecuta (erro reaparece)', !els.tseStatus.hidden && /Resultados agregados indisponíveis/.test(els.tseStatusText.textContent), '');
   blockIndex = false; // o snapshot "aparece" de volta (CI re-publicou)
 
   // 4) TSE snapshot: mapa por número, sem download
@@ -132,14 +135,14 @@ function check(name, pass, extra) {
   check('lista via snapshot (JULIANA ANDOZIO 1333)', selHtml.includes('JULIANA ANDOZIO') && selHtml.includes('(1333)'), '');
   check('lista em ordem de votos (top 1 primeiro)', selHtml.indexOf('2233') < selHtml.indexOf('1333'), '');
   check('filtro visível com a lista', els.tseFilterRow.hidden === false && els.tseSel.hidden === false, '');
-  check('contagem de candidatos (253)', /253 candidatos/.test(els.tseFilterCount.textContent), els.tseFilterCount.textContent);
+  check('contagem de candidatos (229)', /229 candidatos/.test(els.tseFilterCount.textContent), els.tseFilterCount.textContent);
   // filtro por nome (sem acento, case-insensitive)
   els.tseFilter.value = 'andoz';
   await els.tseFilter.listeners.input[0]();
   const selFilt = els.tseSel.innerHTML;
   check('filtro "andoz" mantém 1333', selFilt.includes('JULIANA ANDOZIO') && selFilt.includes('(1333)'), '');
   check('filtro "andoz" reduz a lista', (selFilt.match(/<option/g) || []).length < 20, (selFilt.match(/<option/g) || []).length + ' opções');
-  check('contagem filtrada', /de 253/.test(els.tseFilterCount.textContent), els.tseFilterCount.textContent);
+  check('contagem filtrada', /de 229/.test(els.tseFilterCount.textContent), els.tseFilterCount.textContent);
   // filtro por número
   els.tseFilter.value = '2233';
   await els.tseFilter.listeners.input[0]();

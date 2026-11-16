@@ -1,0 +1,90 @@
+{
+  "baseline_head": "ef83bae",
+  "resultados": {
+    "app_smoke.js.log": {
+      "ultimas_linhas": [
+        "  ✓ erro de validação exibido ",
+        "",
+        "SMOKE OK"
+      ]
+    },
+    "electoral_data.js.log": {
+      "ultimas_linhas": [
+        "ELECTORAL DATA OK: EA11/EA20, categorias, turnos, CORS, falhas, cache, comparabilidade e 667 snapshots equivalentes"
+      ]
+    },
+    "geo_pbf_roundtrip.py.log": {
+      "ultimas_linhas": [
+        "  ✓ D (Delta): coords ok",
+        "",
+        "PBF ROUNDTRIP OK"
+      ]
+    },
+    "geo_ref_check.py.log": {
+      "ultimas_linhas": [
+        "  ✗ rebuild == publicado",
+        "",
+        "GEO-REF-CHECK FALHOU"
+      ]
+    },
+    "geo_semantics.js.log": {
+      "ultimas_linhas": [
+        "  ✓ README documenta \"Semântica geográfica do mapa\" ",
+        "",
+        "GEO-SEMANTICS OK"
+      ]
+    },
+    "geo_verify.js.log": {
+      "ultimas_linhas": [
+        "  ✓ sem catálogo + modo ilustrativo: aria declara ILUSTRATIVO (TIVAS dentro do polígono do município (sem catálogo de coordenadas verificadas).)",
+        "",
+        "GEO-VERIFY OK"
+      ]
+    },
+    "labels_browser.js.log": {
+      "ultimas_linhas": [
+        "  ✓ viewport: pres-28 tem mais rótulos em 1440px que em 390px (densidade adaptada) (1440:44 vs 390:9)",
+        "",
+        "LABELS BROWSER OK (93 verificações)"
+      ]
+    },
+    "snapshot_app.js.log": {
+      "ultimas_linhas": [
+        "  ✓ número ausente: retry oculto ",
+        "",
+        "SNAPSHOT OK"
+      ]
+    },
+    "snapshot_format_check.py.log": {
+      "ultimas_linhas": [
+        "Ran 3 tests in 2.828s",
+        "",
+        "OK"
+      ]
+    },
+    "tse_e2e.js.log": {
+      "ultimas_linhas": [
+        "  top 5: 2233 JULIA PEDROSO ZANATTA (560223) | 1313 ANA PAULA DE SOUZA LIMA (201377) | 1350 PEDRO FRANCISCO UCZAI (164389) | 2222 JAIR RENAN VALLE BOLSONARO (131555) | 2212 CARLOS HENRIQUE DE LIMA (128333)",
+        "candidateDataset(1333): 3375 ms | total = 4876 | secoes = 3397 | mun = 224",
+        "✓ TSE -> app: dataset 1333 idêntico ao publicado"
+      ]
+    },
+    "tse_panel_ux.js.log": {
+      "ultimas_linhas": [
+        "  ✓ novo cargo: lista de Senador (n = índice) (13 (índice: 13))",
+        "",
+        "PAINEL TSE UX OK"
+      ]
+    },
+    "ui_browser.js.log": {
+      "ultimas_linhas": [
+        "  ✓ loading: estado limpo após a malha carregar",
+        "",
+        "BROWSER UI OK (107 verificações)"
+      ]
+    }
+  },
+  "falha_preexistente": "geo_ref_check.py: rebuild == publicado",
+  "rede_real": "HTTP 200 CORS https://elacerda.github.io ETag \"496d94727d489c763e16090708b827be\" Last-Modified Sat, 24 Oct 2026 14:27:44 GMT\nHTTP condicional 304 confirmado",
+  "http_local": "20 corpos JSON transferidos, tamanhos conferidos"
+}
